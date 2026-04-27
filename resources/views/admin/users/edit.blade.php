@@ -44,12 +44,12 @@
                         $candidatosSeleccionados = array_map('intval', $candidatosSeleccionados);
             
                         // Lista de candidatos disponibles
-                        $listaCandidatos = [
-                            0   => 'General',
-                            101 => 'U101',
-                            103 => 'U103',
-                            4   => 'U04',
-                        ];
+                        $listaCandidatos = [0 => 'General'];
+                        if (isset($candidatos)) {
+                            foreach ($candidatos as $c) {
+                                $listaCandidatos[(int) $c->codigo] = $c->codigo . ' - ' . $c->nombre;
+                            }
+                        }
                     @endphp
             
                     <select name="candidatos[]" form="formUser" id="candidatos" class="form-control select2" multiple>

@@ -76,6 +76,42 @@
             </tr> 
         </tbody>
        </table>
+       @php
+            $fallbackCandidatos = [
+                ['codigo' => '01', 'nombre' => 'Wilmar Barbosa', 'campo' => 'gob4'],
+                ['codigo' => '02', 'nombre' => 'Bairon Muñoz', 'campo' => 'gob7'],
+                ['codigo' => '03', 'nombre' => 'Jose L Silva', 'campo' => 'gob11'],
+                ['codigo' => '04', 'nombre' => 'Harold Barreto', 'campo' => 'gob6'],
+                ['codigo' => '05', 'nombre' => 'Rafaela Cortes', 'campo' => 'gob1'],
+                ['codigo' => '06', 'nombre' => 'Antonio Amaya', 'campo' => 'gob8'],
+                ['codigo' => '07', 'nombre' => 'Edward Libreros', 'campo' => 'gob5'],
+                ['codigo' => '08', 'nombre' => 'Florentino Vasquez', 'campo' => 'gob9'],
+                ['codigo' => '09', 'nombre' => 'Marcela Amaya', 'campo' => 'gob2'],
+                ['codigo' => '10', 'nombre' => 'Dario Vasquez', 'campo' => 'gob3'],
+            ];
+
+            $candidatosConfigurados = collect($candidatosE14 ?? [])
+                ->filter(fn ($c) => !empty($c->campo_e14))
+                ->sortBy('campo_e14')
+                ->map(function ($c) {
+                    return [
+                        'codigo' => (string) $c->codigo,
+                        'nombre' => (string) $c->nombre,
+                        'partido' => $c->partido ? (' - ' . $c->partido) : '',
+                        'campo' => 'gob' . (int) $c->campo_e14,
+                    ];
+                })
+                ->values();
+
+            $filasCandidatos = $candidatosConfigurados->isNotEmpty()
+                ? $candidatosConfigurados
+                : collect($fallbackCandidatos);
+
+            $reclamacionOptions = ['' => 'Selecciona una opción', 0 => 'No'];
+            foreach ($filasCandidatos as $fila) {
+                $reclamacionOptions[$fila['codigo']] = $fila['nombre'];
+            }
+       @endphp
        <div class="table-container">
         <table class="table">
             <thead>
@@ -86,58 +122,16 @@
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td><label for="gob4">01</label></td>
-                    <td><label type="text" name="gob4">Wilmar Barbosa</td>
-                    <td><input  class="form-control"type="text" name="gob4" value="{{$teller->gob4}}" required></td>
-                </tr>
-                <tr>
-                    <td><label for="gob7">02</label></td>
-                    <td><label type="text" name="gob7">Bairon Muñoz</td>
-                    <td><input  class="form-control"type="text" name="gob7" value="{{$teller->gob7}}" required></td>
-                </tr>
-                <tr>
-                    <td><label for="gob11">03</label></td>
-                    <td><label type="text" name="gob11">Jose L Silva</td>
-                    <td><input  class="form-control" type="text" name="gob11" value="{{$teller->gob11}}" required></td>
-                </tr>
-                <tr>
-                    <td><label for="gob6">04</label></td>
-                    <td><label type="text" name="gob6">Harold Barreto</td>
-                    <td><input  class="form-control"type="text" name="gob6" value="{{$teller->gob6}}" required></td>
-                </tr>
-                <tr>
-                    <td><label for="gob1">05</label></td>
-                    <td><label type="text" name="gob1">Rafaela Cortes</td>
-                    <td ><input  class="form-control" name="gob1" value="{{$teller->gob1}}" required></td>
-                </tr>
-
-                <tr>
-                    <td><label for="gob8">06</label></td>
-                    <td><label type="text" name="gob8">Antonio Amaya</td>
-                    <td><input  class="form-control"type="text" name="gob8" value="{{$teller->gob8}}" required></td>
-                </tr>
-                <tr>
-                    <td><label for="gob5">07</label></td>
-                    <td><label type="text" name="gob5">Edward Libreros</td>
-                    <td><input  class="form-control"type="text" name="gob5" value="{{$teller->gob5}}" required></td>
-                </tr>
-                <tr>
-                    <td><label for="gob9">08</label></td>
-                    <td><label type="text" name="gob9">Florentino Vasquez</td>
-                    <td><input  class="form-control"type="text" name="gob9" value="{{$teller->gob9}}" required ></td>
-                </tr>
-            
-                <tr>
-                    <td><label for="gob2">09</label></td>
-                    <td><label type="text" name="gob2">Marcela Amaya</td>
-                    <td><input  class="form-control"type="text" name="gob2" value="{{$teller->gob2}}" required></td>
-                </tr>
-                <tr>
-                    <td><label for="gob3">10</label></td>
-                    <td><label type="text" name="gob3">Dario Vasquez</td>
-                    <td><input  class="form-control"type="text" name="gob3" value="{{$teller->gob3}}" required></td>
-                </tr>
+                @foreach ($filasCandidatos as $fila)
+                    @php $campo = $fila['campo']; @endphp
+                    <tr>
+                        <td><label for="{{ $campo }}">{{ $fila['codigo'] }}</label></td>
+                        <td>{{ $fila['nombre'] }}{{ $fila['partido'] ?? '' }}</td>
+                        <td>
+                            <input class="form-control" type="number" min="0" name="{{ $campo }}" value="{{ old($campo, $teller->{$campo}) }}" required>
+                        </td>
+                    </tr>
+                @endforeach
                 <tr>
                     
                     <td colspan="2">Votos en blanco</td>
@@ -165,7 +159,7 @@
         </div>
         <div class="col-6">
             {!! Form::label("reclamacion", "Reclamaciones mesa") !!}
-            {!! Form::select("reclamacion", ['' => 'Selecciona una opción', 0 => 'No', 1 => 'Rafaela', 2 => 'Marcela',3 => 'Wilmar',4 => 'Harold',5 => 'Dario'], null, ["class" => "form-control", "required" => "required"]) !!}
+            {!! Form::select("reclamacion", $reclamacionOptions, null, ["class" => "form-control", "required" => "required"]) !!}
         
         </div>
     </div>

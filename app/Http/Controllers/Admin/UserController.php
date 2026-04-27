@@ -9,6 +9,9 @@ use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Hash;
 use App\Models\Puestos;
 use App\Models\Seller;
+use App\Models\Candidato;
+use App\Models\Eleccion;
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
@@ -29,12 +32,21 @@ class UserController extends Controller
       
         $puestos = Puestos::orderBy('codpuesto')->get();
 
-        return view('admin.users.create', compact('roles', 'municipios', ));
+        $eleccionId = Eleccion::where('estado', 'activa')->max('id');
+        $candidatos = $eleccionId
+            ? Candidato::where('eleccion_id', $eleccionId)->orderBy('codigo')->get()
+            : collect();
+
+        return view('admin.users.create', compact('roles', 'municipios', 'candidatos'));
     }
 
     public function store(Request $request)
     {
-        
+        $eleccionId = Eleccion::where('estado', 'activa')->max('id');
+        $allowedCodes = $eleccionId
+            ? Candidato::where('eleccion_id', $eleccionId)->pluck('codigo')->all()
+            : [];
+
         $request->validate([
             'name'     => 'required|string|max:255',
             'email'    => 'required|email|unique:users',
@@ -42,7 +54,10 @@ class UserController extends Controller
             'role'     => 'required',
             'status'     => 'required',
             'candidatos' => 'required|array',
-            'candidatos.*' => 'integer|in:0,101,103,4', // valida cada elemento del array
+            'candidatos.*' => [
+                'integer',
+                Rule::in(array_merge([0], $allowedCodes)),
+            ],
         ]);
 
       
@@ -116,18 +131,31 @@ class UserController extends Controller
             $user->codpuesto = $user->codpuesto ? explode(',', $user->codpuesto) : [];
             $user->codzon = $user->codzon ? explode(',', $user->codzon) : [];
 
-            return view('admin.users.edit', compact('user', 'roles', 'municipios'));
+            $eleccionId = Eleccion::where('estado', 'activa')->max('id');
+            $candidatos = $eleccionId
+                ? Candidato::where('eleccion_id', $eleccionId)->orderBy('codigo')->get()
+                : collect();
+
+            return view('admin.users.edit', compact('user', 'roles', 'municipios', 'candidatos'));
         }
 
     public function update(Request $request, User $user)
     {
+        $eleccionId = Eleccion::where('estado', 'activa')->max('id');
+        $allowedCodes = $eleccionId
+            ? Candidato::where('eleccion_id', $eleccionId)->pluck('codigo')->all()
+            : [];
+
         $request->validate([
             'name'   => 'required|string|max:255',
             'email'  => 'required|email|unique:users,email,' . $user->id,
             'role'   => 'required',
             'status' => 'required|in:0,1',
             'candidatos' => 'required|array',
-            'candidatos.*' => 'integer|in:0,101,103,4', // valida cada elemento del array
+            'candidatos.*' => [
+                'integer',
+                Rule::in(array_merge([0], $allowedCodes)),
+            ],
         ]);
 
         $user->update([

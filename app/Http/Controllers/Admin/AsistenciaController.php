@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Resultados;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Traits\EleccionScope;
 
 class AsistenciaController extends Controller
 {
+    use EleccionScope;
     /**
      * Display a listing of the resource.
      *
@@ -17,19 +19,23 @@ class AsistenciaController extends Controller
 
      public function index()
      {
+            $eleccionId = $this->resolveEleccionId((int) request('eleccion_id'));
+            $base = DB::table('sellers');
+            $this->applyEleccionScopeSeller($base, $eleccionId, 'sellers');
+
             // Total testigos posesionados en villao
-            $ttpv = DB::table('sellers')
+            $ttpv = (clone $base)
                     ->where('codmun','=','001')
                     ->where('mesa', '<>' , 'Rem')
                     ->where('statusasistencia', '=' , '1')
                     ->count();
             // Total testigos en villao
-            $ttv = DB::table('sellers')
+            $ttv = (clone $base)
                     ->where('codmun','=','001')
                     ->where('mesa', '<>' , 'Rem')
                     ->count();
             // Total remanenets posesionados en villao
-            $trpv = DB::table('sellers')
+            $trpv = (clone $base)
                     ->where('codmun','=','001')
                     ->where('mesa', '=' , 'Rem')
                     ->where('statusasistencia', '=' , '1')
@@ -37,24 +43,24 @@ class AsistenciaController extends Controller
                      
             // Total testigos en municipios
                     
-            $ttm = DB::table('sellers')
+            $ttm = (clone $base)
                     ->where('codmun','<>','001')
                     ->where('mesa', '<>' , 'Rem')
                     ->count();    
             // Total testigos posesionados en municipios
-            $ttpm = DB::table('sellers')
+            $ttpm = (clone $base)
                     ->where('codmun','<>','001')
                     ->where('mesa', '<>' , 'Rem')
                     ->where('statusasistencia', '=' , '1')
                     ->count();    
                             
             // Total remanentes posesionados en municipios
-            $trpm = DB::table('sellers')
+            $trpm = (clone $base)
                     ->where('codmun','<>','001')
                     ->where('mesa', '=' , 'Rem')
                     ->where('statusasistencia', '=' , '1')
                     ->count();  
-                $asistenciam = DB::table('sellers')
+                $asistenciam = (clone $base)
                     ->select('municipio', 'puesto')
                     ->addSelect(DB::raw('COUNT(*) as total_testigo'))
                     ->addSelect(DB::raw('SUM(CASE WHEN statusasistencia = 1 THEN 1 ELSE 0 END) as testigo_ok'))
@@ -70,33 +76,36 @@ class AsistenciaController extends Controller
         }
     public function getAsistencia()
     {
+                $eleccionId = $this->resolveEleccionId((int) request('eleccion_id'));
+                $base = DB::table('sellers');
+                $this->applyEleccionScopeSeller($base, $eleccionId, 'sellers');
         
                 // Total testigos posesionados en villao
-                        $ttpv = DB::table('sellers')
+                        $ttpv = (clone $base)
                                 ->where('codmun','=','001')
                                 ->where('mesa', '<>' , 'Rem')
                                 ->where('statusasistencia', '=' , '1')
                                 ->count();
                 // Total testigos en villao
-                        $ttv = DB::table('sellers')
+                        $ttv = (clone $base)
                                 ->where('codmun','=','001')
                                 ->where('mesa', '<>' , 'Rem')
                                 ->count();
                 // Total remanenets posesionados en villao
-                        $trpv = DB::table('sellers')
+                        $trpv = (clone $base)
                                 ->where('codmun','=','001')
                                 ->where('mesa', '=' , 'Rem')
                                 ->where('statusasistencia', '=' , '1')
                                 ->count();    
                 // Total testigos posesionados en municipios
-                        $ttpm = DB::table('sellers')
+                        $ttpm = (clone $base)
                                 ->where('codmun','<>','001')
                                 ->where('mesa', '<>' , 'Rem')
                                 ->where('statusasistencia', '=' , '1')
                                 ->count();    
                                         
                 // Total remanentes posesionados en municipios
-                        $trpm = DB::table('sellers')
+                        $trpm = (clone $base)
                                 ->where('codmun','<>','001')
                                 ->where('mesa', '=' , 'Rem')
                                 ->where('statusasistencia', '=' , '1')
@@ -105,7 +114,7 @@ class AsistenciaController extends Controller
                 //       testigos y remanentes presentes por comision 
 
                 
-                        $dt = DB::table('sellers')
+                        $dt = (clone $base)
                                 ->where('codmun','=','001')                   
                                 ->select('codzon', 
                                 DB::raw('SUM(CASE WHEN statusasistencia = 1 THEN 1 ELSE 0 END) as T'),
@@ -115,7 +124,7 @@ class AsistenciaController extends Controller
                                 ->get();
 
                         // testigos y remanentes presentes por municipio
-                        $lablemun =  DB::table('sellers')
+                        $lablemun =  (clone $base)
                                 
                                 ->select('municipio', 
                                     DB::raw('SUM(CASE WHEN statusasistencia = 1 THEN 1 ELSE 0 END) as T'),

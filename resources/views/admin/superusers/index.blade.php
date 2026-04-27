@@ -14,6 +14,12 @@
             <strong>{{(session('info'))}}</strong>
         </div>
     @endif
+
+    @if (($mesas ?? collect())->isEmpty())
+        <div class="alert alert-warning">
+            No hay mesas cargadas para la elección activa.
+        </div>
+    @endif
     
 
     <div class="card">
@@ -25,12 +31,12 @@
                 <thead class="text-white" style="background-color:hsl(209, 36%, 54%)">
                     <tr>
                         <th>#</th>
+                        <th>DD</th>
+                        <th>MM</th>
+                        <th>ZZ</th>
+                        <th>PP</th>
                         <th>Codpuesto</th>
-
-                        @if(Auth::user()->role != 3)
-                            <th>Municipio</th>
-                        @endif
-
+                        <th>Municipio</th>
                         <th>Puesto</th>
                         <th>Mesa</th>
                         <th>candidato</th>
@@ -42,34 +48,38 @@
                 </thead>
 
                 <tbody>
-                    @foreach ($sellers as $seller)
+                    @foreach ($mesas as $r)
 
                         @php
-                            $color = $seller->status != 0 ? 'rgb(0,169,14)' : 'red';
+                            $color = in_array($r->estado, ['asignado','validado','postulado','acreditado'], true)
+                                ? 'rgb(0,169,14)'
+                                : 'red';
                         @endphp
 
                         <tr>
-                            <td>{{ $seller->id }}</td>
+                            <td>{{ $r->mesa_id ?? '-' }}</td>
+                            <td>{{ $r->dd }}</td>
+                            <td>{{ $r->mm }}</td>
+                            <td>{{ $r->zz }}</td>
+                            <td>{{ $r->pp }}</td>
 
                             <td style="color: {{ $color }}">
-                                {{ $seller->coddep }}{{ $seller->codmun }}{{ $seller->codzon }}{{ $seller->codpuesto }}
+                                {{ $r->dd }}{{ $r->mm }}{{ $r->zz }}{{ $r->pp }}
                             </td>
 
-                            @if(Auth::user()->role != 3)
-                                <td style="color: {{ $color }}">
-                                    {{ $seller->municipio }}
-                                </td>
-                            @endif
+                            <td style="color: {{ $color }}">
+                                {{ $r->municipio }}
+                            </td>
 
-                            <td style="color: {{ $color }}">{{ $seller->puesto }}</td>
-                            <td style="color: {{ $color }}">{{ $seller->mesa }}</td>
-                            <td style="color: {{ $color }}">{{ $seller->candidato }}</td>
-                            <td style="color: {{ $color }}">{{ $seller->nombre }}</td>
-                            <td style="color: {{ $color }}">{{ $seller->telefono }}</td>
+                            <td style="color: {{ $color }}">{{ $r->puesto }}</td>
+                            <td style="color: {{ $color }}" data-order="{{ $r->mesa_sort ?? 0 }}">{{ $r->mesa_label }}</td>
+                            <td style="color: {{ $color }}">-</td>
+                            <td style="color: {{ $color }}">{{ $r->nombre ?? '-' }}</td>
+                            <td style="color: {{ $color }}">{{ $r->telefono ?? '-' }}</td>
 
                             {{-- STATUS ICON --}}
                             <td style="font-size:20px; text-align:center">
-                                @if($seller->status == 1)
+                                @if(in_array($r->estado, ['asignado','validado','postulado','acreditado'], true))
                                     <i class="fas fa-vote-yea" style="color:rgb(22,161,22)">
                                         <p hidden>listo</p>
                                     </i>
@@ -82,12 +92,23 @@
 
                             {{-- ACTION --}}
                             <td>
-                                @if ($seller->statusani == 1)
-                                    <a href="#" class="btn btn-secondary btn-sm">Validado</a>
+                                @php
+                                    $label = 'Referido';
+                                    $class = 'primary';
+                                    if ($r->estado === 'asignado') { $label = 'Asignado'; $class = 'primary'; }
+                                    if ($r->estado === 'validado') { $label = 'Validado'; $class = 'success'; }
+                                    if ($r->estado === 'postulado') { $label = 'Postulado'; $class = 'warning'; }
+                                    if ($r->estado === 'acreditado') { $label = 'Acreditado'; $class = 'secondary'; }
+                                @endphp
+
+                                @if (!$r->referido_id)
+                                    <span class="text-muted">-</span>
+                                @elseif ($r->estado === 'acreditado')
+                                    <a href="#" class="btn btn-secondary btn-sm">Acreditado</a>
                                 @else
-                                    <a href="{{ route('admin.superusers.edit', $seller) }}"
-                                    class="btn btn-primary btn-sm">
-                                        {{ Auth::user()->role == 4 ? 'Ver' : 'Acreditar' }}
+                                    <a href="{{ route('admin.superusers.edit', $r->referido_id) }}"
+                                    class="btn btn-{{ $class }} btn-sm">
+                                        {{ ($r->estado === 'validado' || Auth::user()->role == 4) ? 'Ver' : $label }}
                                     </a>
                                 @endif
                             </td>
@@ -100,6 +121,11 @@
         </div>
         
     </div>
+    @if(isset($mesasPage))
+        <div class="mt-3">
+            {{ $mesasPage->links() }}
+        </div>
+    @endif
 
 
 
@@ -188,8 +214,13 @@
                 pageLength: 25,
                 responsive: true,
                 columnDefs: [
-                    { targets: 0, visible: false }
+                    { targets: 0, visible: false },
+                    { targets: [1,2,3,4], visible: false },
+                    @if(Auth::user()->role == 3)
+                        { targets: 6, visible: false },
+                    @endif
                 ],
+                order: [[1, 'asc'], [2, 'asc'], [3, 'asc'], [4, 'asc'], [8, 'asc']],
                 language: {
                     search: "Buscar:"
                 }
@@ -210,9 +241,3 @@
     </script>
     
 @endsection
-
-
-
-
-
-

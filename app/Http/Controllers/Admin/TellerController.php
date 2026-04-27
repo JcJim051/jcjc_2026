@@ -5,13 +5,15 @@ namespace App\Http\Controllers\Admin;
 use Image;
 use Illuminate\Support\Facades\Storage;
 use App\Http\Controllers\Controller;
+use App\Models\Candidato;
 use App\Models\Seller;
 use Illuminate\Http\Request;
 use App\Traits\Compartimentacion;
+use App\Traits\EleccionScope;
 
 class TellerController extends Controller
 {
-    use Compartimentacion;
+    use Compartimentacion, EleccionScope;
     /**
      * Display a listing of the resource.
      *
@@ -92,7 +94,16 @@ class TellerController extends Controller
      */
     public function edit(Seller $teller)
     {
-        return view('admin.tellers.edit', compact('teller'));
+        $eleccionId = $this->resolveEleccionId((int) request('eleccion_id'));
+        $candidatosE14 = Candidato::query()
+            ->where('activo', 1)
+            ->whereNotNull('campo_e14')
+            ->when($eleccionId, fn ($q) => $q->where('eleccion_id', $eleccionId))
+            ->orderBy('campo_e14')
+            ->orderBy('codigo')
+            ->get();
+
+        return view('admin.tellers.edit', compact('teller', 'candidatosE14'));
     }
 
     public function show(Seller $teller)

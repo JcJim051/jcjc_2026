@@ -5,9 +5,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Resultados;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Traits\EleccionScope;
 
 class TransmisionController extends Controller
 {
+    use EleccionScope;
     /**
      * Display a listing of the resource.
      *
@@ -15,7 +17,11 @@ class TransmisionController extends Controller
      */
     public function index()
     {   
-        $avance_mun = DB::table('sellers')
+        $eleccionId = $this->resolveEleccionId((int) request('eleccion_id'));
+        $base = DB::table('sellers');
+        $this->applyEleccionScopeSeller($base, $eleccionId, 'sellers');
+
+        $avance_mun = (clone $base)
                     ->select('municipio', 
                             DB::raw('count(*) as total_mesas'), 
                             DB::raw('SUM(CASE WHEN gob1 IS NOT NULL THEN 1 ELSE 0 END) as mesas_ok'),
@@ -24,7 +30,7 @@ class TransmisionController extends Controller
                     
                     ->groupBy('municipio')
                     ->get();
-        $avance_zonas = DB::table('sellers')
+        $avance_zonas = (clone $base)
                             ->select('codescru', 
                                     DB::raw('count(*) as total_mesas'), 
                                     DB::raw('SUM(CASE WHEN gob1 IS NOT NULL THEN 1 ELSE 0 END) as mesas_ok'),
@@ -34,30 +40,27 @@ class TransmisionController extends Controller
                             ->groupBy('codescru')
                             ->get();
 
-        $avance_pareto = DB::table('sellers')
+        $avance_pareto = (clone $base)
                             ->select('municipio', 
                                 DB::raw('count(*) as total_mesas'), 
                                 DB::raw('SUM(CASE WHEN gob1 IS NOT NULL THEN 1 ELSE 0 END) as mesas_ok'),
                                 DB::raw('SUM(CASE WHEN e14 IS NOT NULL AND e14_2 IS NOT NULL THEN 1 ELSE 0 END) as fotos_ok'))
-                            ->where('municipio', 'VILLAVICENCIO')
-                            ->orwhere('municipio', 'ACACIAS')
-                            ->orwhere('municipio', 'PUERTO GAITAN')
-                            ->orwhere('municipio', 'GRANADA')
+                            ->whereIn('municipio', ['VILLAVICENCIO', 'ACACIAS', 'PUERTO GAITAN', 'GRANADA'])
                             ->groupBy('municipio')
                             ->get();
 
-                $tm = DB::table('sellers')
+                $tm = (clone $base)
                             ->count('mesa');
-                $tmi= DB::table('sellers')
+                $tmi= (clone $base)
                             ->where('gob1', '<>' , null)
                             ->count(); 
 
-                $recl = DB::table('sellers')                
+                $recl = (clone $base)                
                         ->where('reclamacion','=','1')              
                         ->count();
         //     Total reclamaciones con foto
                 
-                $trf= DB::table('sellers')
+                $trf= (clone $base)
                             ->where('reclamacion' , 1)
                             ->where('fotorec', '<>' , null)
                             ->count();                             

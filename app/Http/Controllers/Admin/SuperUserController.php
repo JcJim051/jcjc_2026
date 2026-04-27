@@ -3,19 +3,20 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Seller;
-use App\Models\Puestos;
+use App\Models\Referido;
+use App\Models\Persona;
+use App\Models\EleccionPuesto;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Storage;
-use App\Traits\Compartimentacion;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use App\Traits\EleccionScope;
 
 
 class SuperUserController extends Controller
 {
-    use Compartimentacion;
+    use EleccionScope;
     /**
      * Display a listing of the resource.
      *
@@ -121,9 +122,169 @@ class SuperUserController extends Controller
     public function index()
     {
         $user = auth()->user();
-        $sellers = $this->filtrarSellersPorUsuario($user);
+        $eleccionId = $this->resolveEleccionId((int) request('eleccion_id'));
+        if (!$eleccionId) {
+            return view('admin.superusers.index', ['mesas' => collect()]);
+        }
 
-        return view('admin.superusers.index', compact('sellers'));
+        $referidoAgg = DB::table('referidos')
+            ->where('eleccion_id', $eleccionId)
+            ->select([
+                'eleccion_puesto_id',
+                'mesa_num',
+                DB::raw("MAX(CASE WHEN estado = 'acreditado' THEN 1 ELSE 0 END) as has_acreditado"),
+                DB::raw("MAX(CASE WHEN estado = 'postulado' THEN 1 ELSE 0 END) as has_postulado"),
+                DB::raw("MAX(CASE WHEN estado = 'validado' THEN 1 ELSE 0 END) as has_validado"),
+                DB::raw("MAX(CASE WHEN estado = 'asignado' THEN 1 ELSE 0 END) as has_asignado"),
+                DB::raw("MAX(CASE WHEN estado = 'referido' THEN 1 ELSE 0 END) as has_referido"),
+                DB::raw("COALESCE(
+                    MAX(CASE WHEN estado = 'acreditado' THEN id END),
+                    MAX(CASE WHEN estado = 'postulado' THEN id END),
+                    MAX(CASE WHEN estado = 'validado' THEN id END),
+                    MAX(CASE WHEN estado = 'asignado' THEN id END),
+                    MAX(CASE WHEN estado = 'referido' THEN id END)
+                ) as best_referido_id"),
+            ])
+            ->groupBy('eleccion_puesto_id', 'mesa_num');
+
+        $mesasQuery = DB::table('eleccion_mesas as em')
+            ->join('eleccion_puestos as ep', 'ep.id', '=', 'em.eleccion_puesto_id')
+            ->leftJoinSub($referidoAgg, 'ra', function ($join) {
+                $join->on('ra.eleccion_puesto_id', '=', 'em.eleccion_puesto_id')
+                    ->on('ra.mesa_num', '=', 'em.mesa_num');
+            })
+            ->leftJoin('referidos as r', 'r.id', '=', 'ra.best_referido_id')
+            ->leftJoin('personas as p', 'p.id', '=', 'r.persona_id')
+            ->where('em.eleccion_id', $eleccionId)
+            ->select([
+                'em.id as mesa_id',
+                'em.mesa_num',
+                'em.eleccion_puesto_id',
+                'ep.dd',
+                'ep.mm',
+                'ep.zz',
+                'ep.pp',
+                'ep.municipio',
+                'ep.puesto',
+                'ra.has_acreditado',
+                'ra.has_postulado',
+                'ra.has_validado',
+                'ra.has_asignado',
+                'ra.has_referido',
+                'r.id as referido_id',
+                'p.nombre',
+                'p.telefono',
+            ]);
+        $this->applyEleccionScope($mesasQuery, $eleccionId, 'ep');
+        $this->applyUserGeoScope($mesasQuery, $user, 'ep');
+        $this->applyCandidateScope($mesasQuery, $user, 'em', $eleccionId);
+
+        $defaultPerPage = $user->id == 1 ? 5000 : 200;
+        $perPage = (int) request('per_page', $defaultPerPage);
+        if ($perPage <= 0) {
+            $perPage = $defaultPerPage;
+        }
+
+        $mesasPage = $mesasQuery
+            ->orderBy('ep.dd')
+            ->orderBy('ep.mm')
+            ->orderBy('ep.zz')
+            ->orderBy('ep.pp')
+            ->orderBy('em.mesa_num')
+            ->paginate($perPage)
+            ->appends(request()->except('page'));
+
+        $mesasRows = collect($mesasPage->items())->map(function ($row) {
+            $estado = 'pendiente';
+            if ($row->has_acreditado) {
+                $estado = 'acreditado';
+            } elseif ($row->has_postulado) {
+                $estado = 'postulado';
+            } elseif ($row->has_validado) {
+                $estado = 'validado';
+            } elseif ($row->has_asignado) {
+                $estado = 'asignado';
+            } elseif ($row->has_referido) {
+                $estado = 'referido';
+            }
+
+            return (object) [
+                'mesa_id' => $row->mesa_id,
+                'mesa_label' => (string) $row->mesa_num,
+                'mesa_sort' => (int) $row->mesa_num,
+                'is_remanente' => false,
+                'estado' => $estado,
+                'referido_id' => $row->referido_id,
+                'nombre' => $row->nombre,
+                'telefono' => $row->telefono,
+                'municipio' => $row->municipio,
+                'puesto' => $row->puesto,
+                'dd' => $row->dd,
+                'mm' => $row->mm,
+                'zz' => $row->zz,
+                'pp' => $row->pp,
+                'eleccion_puesto_id' => $row->eleccion_puesto_id,
+            ];
+        });
+
+        $remanentesRows = collect();
+        $puestosPermitidos = $mesasRows
+            ->map(fn ($row) => $row->eleccion_puesto_id)
+            ->unique()
+            ->flip();
+
+        $puestosQuery = DB::table('eleccion_puestos')
+            ->where('eleccion_id', $eleccionId)
+            ->when(!$puestosPermitidos->isEmpty(), function ($q) use ($puestosPermitidos) {
+                $q->whereIn('id', $puestosPermitidos->keys()->all());
+            })
+            ->select([
+                'id',
+                'dd',
+                'mm',
+                'zz',
+                'pp',
+                'municipio',
+                'puesto',
+                'mesas_total',
+            ]);
+        $this->applyEleccionScope($puestosQuery, $eleccionId, 'eleccion_puestos');
+
+        foreach ($puestosQuery->get() as $puesto) {
+            $total = (int) $puesto->mesas_total;
+            if ($total <= 0) {
+                continue;
+            }
+
+            $remanentes = $total < 10 ? 1 : (int) ceil($total * 0.10);
+            for ($i = 1; $i <= $remanentes; $i++) {
+                $remanentesRows->push((object) [
+                    'mesa_id' => null,
+                    'mesa_label' => 'Rem ' . $i,
+                    'mesa_sort' => 1000 + $i,
+                    'is_remanente' => true,
+                    'estado' => 'remanente',
+                    'referido_id' => null,
+                    'nombre' => null,
+                    'telefono' => null,
+                    'municipio' => $puesto->municipio,
+                    'puesto' => $puesto->puesto,
+                    'dd' => $puesto->dd,
+                    'mm' => $puesto->mm,
+                    'zz' => $puesto->zz,
+                    'pp' => $puesto->pp,
+                ]);
+            }
+        }
+
+        $mesas = $mesasRows
+            ->concat($remanentesRows)
+            ->sortBy(function ($row) {
+                return sprintf('%s-%s-%s-%s-%06d', $row->dd, $row->mm, $row->zz, $row->pp, $row->mesa_sort);
+            })
+            ->values();
+
+        return view('admin.superusers.index', compact('mesas', 'mesasPage'));
     }
     
     /**
@@ -144,37 +305,26 @@ class SuperUserController extends Controller
      */
     public function store(Request $request)
     {
-        
-        if ($request->email == null) {
-
-        } else {
-            $request->validate([
-
-                'email' => 'unique:sellers',
-    
-            ]);
-        }
-        
-        
-
-        $seller = Seller::create($request->all());
-        
-        
-        return redirect()->route('admin.superusers.edit', $seller)->with('info', 'El testigo se registro con exito');
+        return redirect()->route('admin.superusers.index');
 
     }
 
-    public function edit(Seller $superuser)
+    public function edit(Referido $superuser)
     {
-        $pdfUrl = null;
-        if ($superuser->pdf) {
-            $pdfUrl = Storage::disk('s3')->temporaryUrl(
-                $superuser->pdf,
-                now()->addMinutes(10) // enlace válido 10 minutos
-            );
-        }
-        $puestos= Puestos::all();
-        return view('admin.superusers.edit', compact('superuser', 'puestos', 'pdfUrl'));
+        $persona = Persona::find($superuser->persona_id);
+        $puesto = EleccionPuesto::find($superuser->eleccion_puesto_id);
+        $puestos = EleccionPuesto::where('eleccion_id', $superuser->eleccion_id)
+            ->orderBy('municipio')
+            ->orderBy('puesto')
+            ->get();
+
+        $pdfUrl = $superuser->cedula_pdf_path
+            ? asset('storage/' . $superuser->cedula_pdf_path)
+            : null;
+
+        $readonly = in_array($superuser->estado, ['validado', 'postulado', 'acreditado'], true);
+
+        return view('admin.superusers.edit', compact('superuser', 'persona', 'puesto', 'puestos', 'pdfUrl', 'readonly'));
     }
 
     /**
@@ -253,166 +403,46 @@ class SuperUserController extends Controller
 
  
 
-    public function update(Request $request, Seller $superuser)
+    public function update(Request $request, Referido $superuser)
     {
-        $rules = [
-            'email' => [
-                'nullable',
-                Rule::unique('sellers')->ignore($superuser->id),
-            ],
-            'cedula' => [
-                'nullable',
-                Rule::unique('sellers')->ignore($superuser->id),
-            ],
-            'nombre'    => 'required|string|max:255',
-            'telefono'  => 'required|string|max:50',
-            'dondevota' => 'required|string|max:255',
-            'status'    => 'nullable|string|max:255',
-            'statusani' => 'nullable|string|max:255',
-            'observacion' => 'nullable|string|max:255',
-            'pdf' => $superuser->pdf 
-            ? 'nullable|file|mimes:pdf|max:2048' // puede dejar vacío
-            : 'required|file|mimes:pdf|max:2048', // obligatorio si no existe
-            
-        ];
-        
-        // 🔹 Validación del PDF (2 MB máximo)
-        if ($superuser->pdf === null) {
-            $rules['pdf'] = 'required|file|mimes:pdf|max:2048';
-        } else {
-            $rules['pdf'] = 'nullable|file|mimes:pdf|max:2048';
-        }
-        
-        // 🔹 Mensajes personalizados
-        $messages = [
-            'pdf.required' => 'Debe adjuntar el documento en formato PDF.',
-            'pdf.file'     => 'El archivo cargado no es válido.',
-            'pdf.mimes'    => 'El archivo debe estar en formato PDF.',
-            'pdf.max'      => 'El archivo PDF no puede pesar más de 2 MB.',
-        ];
-        
-        // Ejecutar validación
-        $validated = $request->validate($rules, $messages);
-
-        // Normalizar campos
-        if (isset($validated['nombre'])) {
-            $validated['nombre'] = strtolower(Str::ascii($validated['nombre']));
+        if (in_array($superuser->estado, ['validado', 'postulado', 'acreditado'], true)) {
+            return redirect()
+                ->route('admin.superusers.edit', $superuser)
+                ->with('error', 'Este testigo ya está validado o más avanzado. Solo lectura.');
         }
 
-        if (isset($validated['cedula'])) {
-            $validated['cedula'] = preg_replace('/[^0-9]/', '', (string)$validated['cedula']);
-        }
+        $persona = Persona::findOrFail($superuser->persona_id);
+
+        $validated = $request->validate([
+            'nombre' => 'required|string|max:255',
+            'cedula' => ['required', 'string', 'max:50', Rule::unique('personas', 'cedula')->ignore($persona->id)],
+            'email' => ['required', 'email', 'max:255', Rule::unique('personas', 'email')->ignore($persona->id)],
+            'telefono' => 'nullable|string|max:50',
+            'eleccion_puesto_id' => 'required|integer|exists:eleccion_puestos,id',
+            'mesa_num' => 'required|integer|min:1',
+            'pdf' => 'nullable|file|mimes:pdf|max:2048',
+        ]);
+
+        $persona->nombre = $validated['nombre'];
+        $persona->nombre_original = $validated['nombre'];
+        $persona->nombre_normalizado = strtolower(Str::ascii($validated['nombre']));
+        $persona->cedula = preg_replace('/[^0-9]/', '', (string) $validated['cedula']);
+        $persona->email = $validated['email'];
+        $persona->telefono = $validated['telefono'] ?? null;
+        $persona->save();
 
         if ($request->hasFile('pdf')) {
-
-            $file = $request->file('pdf');
-        
-            // 🛑 1. Verificar que el archivo realmente es válido
-            if (!$file->isValid()) {
-                return back()->withErrors(['pdf' => 'Error al subir el archivo. Intente nuevamente.']);
-            }
-        
-            // 🧠 2. Validar MIME real (no confiar en la extensión)
-            $mime = $file->getMimeType();
-            if ($mime !== 'application/pdf') {
-                return back()->withErrors(['pdf' => 'El archivo debe ser un PDF válido.']);
-            }
-        
-            // 📏 3. Validar tamaño real (extra seguridad)
-            if ($file->getSize() > 2 * 1024 * 1024) {
-                return back()->withErrors(['pdf' => 'El PDF no puede superar los 2 MB.']);
-            }
-        
-            // 🔎 4. Obtener extensión REAL basada en contenido
-            $extension = $file->guessExtension() ?: 'pdf';
-        
-            // 🧼 5. Obtener cédula desde el request y limpiarla
-            $cedulaInput = $request->input('cedula');
-            
-            $cedula = preg_replace('/[^0-9]/', '', (string) $cedulaInput);
-            
-            if (empty($cedula)) {
-                return back()->withErrors(['cedula' => 'Debe ingresar una cédula válida.']);
-            }
-        
-            // 🆔 6. Generar nombre único para evitar sobreescrituras
-            $nombreArchivo = $cedula . '_' . now()->timestamp . '_' . uniqid() . '.' . $extension;
-            
-            // ☁️ 7. Subir a S3
-            $path = Storage::disk('s3')->putFileAs('cedulas-pdf', $file, $nombreArchivo);
-        
-            if (!$path) {
-                return back()->withErrors(['pdf' => 'No se pudo guardar el archivo. Intente nuevamente.']);
-            }
-        
-            // 🗑 8. Borrar PDF anterior solo después de subir el nuevo correctamente
-            if ($superuser->pdf && Storage::disk('s3')->exists($superuser->pdf)) {
-                Storage::disk('s3')->delete($superuser->pdf);
-            }
-        
-            // 💾 9. Guardar datos en el modelo
-            $superuser->cedula = $cedula; // ahora sí se guarda en BD
-            $superuser->pdf = $path;
-        }
-            if (
-                isset($validated['observacion']) &&
-                in_array($validated['observacion'], ['Cambiar No 101', 'Llamada 3'])
-            ) {
-                $validated['status'] = 0;
-            }
-            // 🧼 Si vuelve a estado ACTIVO, limpiar observación
-            if (
-                $superuser->status == 0 &&
-                isset($validated['status']) &&
-                (int) $validated['status'] === 1
-            ) {
-                $validated['observacion'] = null;
-            }
-        
-            // Actualizar otros campos validados
-            $superuser->fill($validated); // llena los demás campos
-            $superuser->save(); // guarda todo incluido PDF
-
-       
-        // 🔹 Redirecciones (lógica intacta, solo ordenada)
-        if (
-            $request->statusani === null &&
-            $request->statusrec === null &&
-            $request->statusasistencia === null &&
-            $request->modificadopor_pmu === null
-        ) {
-            return redirect()
-                ->route('admin.superusers.index')
-                ->with('info', 'Testigo actualizado con éxito');
+            $path = $request->file('pdf')->store('cedulas', 'public');
+            $superuser->cedula_pdf_path = $path;
         }
 
-        if (
-            $request->statusrec === null &&
-            $request->statusasistencia === null &&
-            $request->modificadopor_pmu === null
-        ) {
-            return redirect()
-                ->route('admin.ani.index')
-                ->with('info', 'Validación ANI guardada con éxito');
-        }
-
-        if ($request->statusasistencia !== null && $request->modificadopor_pmu === null) {
-            return redirect()
-                ->route('admin.posesion.index')
-                ->with('info', 'Reporte de asistencia guardado con éxito');
-        }
-
-        if ($request->modificadopor_pmu !== null) {
-            return redirect()
-                ->route('admin.pmu.index')
-                ->with('info', 'Corrección PMU reportada con éxito');
-        }
+        $superuser->eleccion_puesto_id = (int) $validated['eleccion_puesto_id'];
+        $superuser->mesa_num = (int) $validated['mesa_num'];
+        $superuser->save();
 
         return redirect()
-            ->route('admin.revision.index')
-            ->with('info', 'Revisión E24 guardada con éxito');
-
-           
+            ->route('admin.superusers.index')
+            ->with('info', 'Testigo actualizado con éxito');
     }
 
 
@@ -422,7 +452,7 @@ class SuperUserController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Seller $superuser)
+    public function destroy(Referido $superuser)
     {
 
         $superuser->delete();

@@ -18,6 +18,26 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::get('referidos/{token}', [App\Http\Controllers\PublicReferidosController::class, 'form'])
+    ->name('public.referidos.form');
+Route::post('referidos/{token}', [App\Http\Controllers\PublicReferidosController::class, 'store'])
+    ->name('public.referidos.store');
+Route::get('referidos/{token}/seguimiento', [App\Http\Controllers\PublicReferidosController::class, 'seguimiento'])
+    ->name('public.referidos.seguimiento');
+Route::get('referidos/{token}/seguimiento/{referido}/edit', [App\Http\Controllers\PublicReferidosController::class, 'edit'])
+    ->name('public.referidos.edit');
+Route::put('referidos/{token}/seguimiento/{referido}', [App\Http\Controllers\PublicReferidosController::class, 'update'])
+    ->name('public.referidos.update');
+Route::get('referidos/{token}/mesas-disponibles', [App\Http\Controllers\PublicReferidosController::class, 'mesasDisponibles'])
+    ->name('public.referidos.mesas_disponibles');
+
+Route::get('referidos/{token}/divipol/puestos', [App\Http\Controllers\PublicReferidosController::class, 'puestos'])
+    ->name('public.referidos.puestos');
+Route::get('referidos/{token}/divipol/departamentos', [App\Http\Controllers\PublicReferidosController::class, 'departamentos'])
+    ->name('public.referidos.departamentos');
+Route::get('referidos/{token}/divipol/municipios', [App\Http\Controllers\PublicReferidosController::class, 'municipios'])
+    ->name('public.referidos.municipios');
+
 Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),

@@ -4,7 +4,7 @@
 
 @section('content_header')
 
-        <h1> Validacion Ani - {{ $superuser->puesto }} MESA {{ $superuser->mesa }}</h1>
+        <h1> Validacion Ani - {{ $puesto->puesto ?? '' }} MESA {{ $referido->mesa_num }}</h1>
        
 
 
@@ -27,7 +27,9 @@
         <div class="container" style="">
             <div class="card card-outline card-warning">
                 <div class="card-body">
-                    {!! Form::model($superuser, ['route' => ['admin.superusers.update',$ani], 'method' => 'PUT', 'enctype' => 'multipart/form-data']) !!}                   
+                    <form action="{{ route('admin.ani.update', $referido->id) }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        @method('PUT')
                             <div class="form-group">
                                 <div class="row">
                                     <div class="col-4">
@@ -46,13 +48,13 @@
                                                 'Llamada 3' => 'Llamada 3',
                                                 'Cambiar No 101' => 'Cambiar No 101',
                                             ],
-                                            null,
+                                            $referido->observaciones,
                                             ['class' => 'form-control']
                                         ) !!}
                 
                                     </div>
                                     <div class="col-2">
-                                        {!! Form::select("statusani",[ 0 => 'Pendiente', 1 => 'Listo' ], null, ["class" => "form-control"]) !!}
+                                        {!! Form::select("statusani",[ 0 => 'Pendiente', 1 => 'Listo' ], $referido->estado === 'validado' ? 1 : 0, ["class" => "form-control"]) !!}
                 
                                     </div>
                                 </div>
@@ -74,22 +76,9 @@
                         <div class="card-body">
                            
                            
-                            {!! Form::hidden('coddep', null) !!}
-                            {!! Form::hidden('codmun', null) !!}
-                            {!! Form::hidden('codzon', null) !!}
-                            {!! Form::hidden('codpuesto', null) !!}
-                            {!! Form::hidden('departamento', null) !!}
-                            {!! Form::hidden('municipio', null) !!}
-                            {!! Form::hidden('puesto', null) !!}
-                            {!! Form::hidden('mesa', null) !!}
-                            {!! Form::hidden('codpar', null) !!}
-                         
-            
-            
-            
                             <div class="form-group"> {{-- A continuacion se usa laravel collective para crar el formulario --}}
                                 {!! Form::label("nombre", "Nombre") !!}
-                                {!! Form::text("nombre", null, ["class" => "form-control", 'placeholder' => 'Ingrese su nombre']) !!}
+                                {!! Form::text("nombre", $persona->nombre ?? '', ["class" => "form-control", 'placeholder' => 'Ingrese su nombre']) !!}
             
                                 @error('nombre')
                                     <span class="text-danger">{{$message}}</span>
@@ -110,7 +99,7 @@
             
                                 <div class="form-group">
                                     {!! Form::label("cedula", "Cedula") !!}
-                                    {!! Form::text("cedula", null, ["class" => "form-control disabled", 'placeholder' => 'Ingrese su cedula']) !!}
+                                    {!! Form::text("cedula", $persona->cedula ?? '', ["class" => "form-control disabled", 'placeholder' => 'Ingrese su cedula']) !!}
             
                                     @error('cedula')
                                         <span class="text-danger">{{$message}}</span>
@@ -120,7 +109,7 @@
             
                                 <div class="form-group">
                                     {!! Form::label("email", "Email") !!}
-                                    {!! Form::text("email", null, ["class" => "form-control disabled", 'placeholder' => 'Ingrese su email']) !!}
+                                    {!! Form::text("email", $persona->email ?? '', ["class" => "form-control disabled", 'placeholder' => 'Ingrese su email']) !!}
             
                                     @error('email')
                                         <span class="text-danger">{{$message}}</span>
@@ -130,7 +119,7 @@
             
                                 <div class="form-group">
                                     {!! Form::label("telefono", "Telefono") !!}
-                                    {!! Form::text("telefono", null, ["class" => "form-control disabled", 'placeholder' => 'Ingrese su telefono']) !!}
+                                    {!! Form::text("telefono", $persona->telefono ?? '', ["class" => "form-control disabled", 'placeholder' => 'Ingrese su telefono']) !!}
             
                                     @error('telefono')
                                         <span class="text-danger">{{$message}}</span>
@@ -144,37 +133,45 @@
                                 <div class="row" >
                                     <div class="col-9">
                                         <label for=""> Puesto de votacion </label><br>
-                                        <select class="form-control js-example-basic-single" name="dondevota" style="width: 80%;">
-                                        
-                                        <option value="{{$superuser->dondevota}}">{{$superuser->puestos->nombre}}</option>
-                                        
-                                            
-                                        
-                                        @foreach ($puestos as $puesto)
-                                            <option value="{{$puesto->codpuesto}}"> {{$puesto->nombre}}</option>
-                                        @endforeach
+                                        <select class="form-control js-example-basic-single" name="eleccion_puesto_id" style="width: 80%;">
+                                            @foreach ($puestos as $p)
+                                                <option value="{{ $p->id }}" {{ $referido->eleccion_puesto_id == $p->id ? 'selected' : '' }}>
+                                                    {{ $p->municipio }} - {{ $p->puesto }}
+                                                </option>
+                                            @endforeach
                                         
                                         
                                     </select>
                                     </div>
                                 
+                                    <div class="col-3">
+                                        <label for=""> Mesa </label><br>
+                                        <input type="number" name="mesa_num" class="form-control" value="{{ $referido->mesa_num }}" min="1" required>
+                                    </div>
             
                                 
             
             
                                 </div>
+
+                                <div class="row" style="margin-top: 15px;">
+                                    <div class="col-9">
+                                        <label for=""> PDF Cédula (máx 2 MB) </label>
+                                        <input type="file" name="pdf" class="form-control" accept=".pdf">
+                                    </div>
+                                </div>
             
             
                                 
                                         <br>
-                                        {!! Form::submit('Guardar Validacion', ['class' => 'btn btn-info']) !!}
+                                        <button type="submit" class="btn btn-info">Guardar Validacion</button>
                                     
             
             
             
             
             
-                            {!! Form::close() !!}
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -201,8 +198,6 @@
         });
     </SCript>
 @endsection
-
-
 
 
 

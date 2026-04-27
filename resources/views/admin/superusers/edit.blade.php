@@ -4,7 +4,7 @@
 
 @section('content_header')
 
-    <h1> {{ $superuser->puesto}} MESA {{ $superuser->mesa}}</h1>
+    <h1> {{ $puesto->puesto ?? '' }} MESA {{ $superuser->mesa_num }}</h1>
 
 
 @stop
@@ -14,6 +14,11 @@
 @if (session('info'))
         <div class="alert alert-success">
             <strong>{{(session('info'))}}</strong>
+        </div>
+@endif
+@if (session('error'))
+        <div class="alert alert-danger">
+            <strong>{{(session('error'))}}</strong>
         </div>
 @endif
 @if ($errors->any())
@@ -28,24 +33,17 @@
 
 <div class="card">
     <div class="card-body">
+        @php
+            $readonly = $readonly ?? false;
+        @endphp
         {!! Form::model($superuser, ['route' => ['admin.superusers.update',$superuser], 'method' => 'PUT', 'enctype' => 'multipart/form-data']) !!}
         @csrf
-        {!! Form::hidden('coddep', null) !!}
-        {!! Form::hidden('codmun', null) !!}
-        {!! Form::hidden('codzon', null) !!}
-        {!! Form::hidden('codpuesto', null) !!}
-        {!! Form::hidden('departamento', null) !!}
-        {!! Form::hidden('municipio', null) !!}
-        {!! Form::hidden('puesto', null) !!}
-        {!! Form::hidden('mesa', null) !!}
-        {!! Form::hidden('codpar', null) !!}
-        {!! Form::hidden('status', null) !!}
 
 
 
         <div class="form-group"> {{-- A continuacion se usa laravel collective para crar el formulario --}}
             {!! Form::label("nombre", "Nombre") !!}
-            {!! Form::text("nombre", null, ["class" => "form-control", 'placeholder' => 'Ingrese su nombre','required' => 'required']) !!}
+            {!! Form::text("nombre", $persona->nombre ?? '', array_merge(["class" => "form-control", 'placeholder' => 'Ingrese su nombre','required' => 'required'], $readonly ? ['readonly' => 'readonly'] : [])) !!}
 
             @error('nombre')
                 <span class="text-danger">{{$message}}</span>
@@ -67,7 +65,7 @@
 
             <div class="form-group">
                 {!! Form::label("cedula", "Cédula") !!}
-                {!! Form::number("cedula", null, ["class" => "form-control disabled", 'placeholder' => 'Ingrese su cédula', 'required' => 'required' ]) !!}
+                {!! Form::number("cedula", $persona->cedula ?? '', array_merge(["class" => "form-control disabled", 'placeholder' => 'Ingrese su cédula', 'required' => 'required' ], $readonly ? ['readonly' => 'readonly'] : [])) !!}
 
                 @error('cedula')
                     <span class="text-danger">{{$message}}</span>
@@ -77,7 +75,7 @@
 
             <div class="form-group">
                 {!! Form::label("email", "Email") !!}
-                {!! Form::email("email", null, ["class" => "form-control","placeholder" => "Ingrese su email", "required" => "required"]) !!}
+                {!! Form::email("email", $persona->email ?? '', array_merge(["class" => "form-control","placeholder" => "Ingrese su email", "required" => "required"], $readonly ? ['readonly' => 'readonly'] : [])) !!}
 
                 @error('email')
                     <span class="text-danger">{{$message}}</span>
@@ -90,7 +88,7 @@
                     <div class="row">
                         <div class="form-group col-sm-6 ">
                             {!! Form::label("telefono", "Telefono") !!}
-                            {!! Form::number("telefono", null, ["class" => "form-control disabled", 'placeholder' => 'Ingrese su telefono', 'required' => 'required']) !!}
+                            {!! Form::number("telefono", $persona->telefono ?? '', array_merge(["class" => "form-control disabled", 'placeholder' => 'Ingrese su telefono', 'required' => 'required'], $readonly ? ['readonly' => 'readonly'] : [])) !!}
             
                             @error('telefono')
                                 <span class="text-danger">{{$message}}</span>
@@ -98,18 +96,17 @@
                         </div>
                         <div class="col-sm-5 col-xs-12">
                             <label for=""> Puesto de votación </label><br>
-                            <select class="js-example-basic-single form-control" name="dondevota" style="width: 100%;" required>
-                            
-                            <option value="{{$superuser->dondevota}}">{{$superuser->puestos->nombre}}</option>
-                            
-                                
-                            
-                            @foreach ($puestos as $puesto)
-                                <option value="{{$puesto->codpuesto}}"> {{$puesto->mun}} - {{$puesto->nombre}}</option>
-                            @endforeach
-                            
-                            
+                            <select class="js-example-basic-single form-control" name="eleccion_puesto_id" style="width: 100%;" required {{ $readonly ? 'disabled' : '' }}>
+                                @foreach ($puestos as $p)
+                                    <option value="{{ $p->id }}" {{ $superuser->eleccion_puesto_id == $p->id ? 'selected' : '' }}>
+                                        {{ $p->municipio }} - {{ $p->puesto }}
+                                    </option>
+                                @endforeach
                             </select>
+                        </div>
+                        <div class="col-sm-2 col-xs-12">
+                            <label for="">Mesa</label>
+                            <input type="number" name="mesa_num" class="form-control" value="{{ $superuser->mesa_num }}" min="1" required {{ $readonly ? 'readonly' : '' }}>
                         </div>
                         {{-- <div class="form-group col-sm-6">
                             {!! Form::label("banco", "Banco") !!}
@@ -129,12 +126,19 @@
             <div class="row">
                 <div class="col-sm-5 col-xs-12">
                     {!! Form::label("pdf", "Pdf Cédula (max 2 mb)") !!} <br>
-            
-                    {!! Form::file("pdf", [
-                        "class" => "form-control",
-                        "accept" => ".pdf",
-                        $superuser->pdf ? '' : 'required' => 'required' // required solo si no hay PDF
-                    ]) !!}
+                    @php
+                        $pdfAttrs = [
+                            "class" => "form-control",
+                            "accept" => ".pdf",
+                        ];
+                        if (!$superuser->cedula_pdf_path) {
+                            $pdfAttrs['required'] = 'required';
+                        }
+                        if ($readonly) {
+                            $pdfAttrs['disabled'] = 'disabled';
+                        }
+                    @endphp
+                    {!! Form::file("pdf", $pdfAttrs) !!}
             
                     @error('pdf')
                         <span class="text-danger">{{ $message }}</span>
@@ -143,7 +147,7 @@
             
                 <div class="col-sm-2 col-xs-12">
                     <label for="">Documento cargado</label><br>
-                    @if ($superuser->pdf == null)
+                    @if ($superuser->cedula_pdf_path == null)
                         Sin cargar
                     @else
                         <a target="_blank" rel="noopener noreferrer" href="{{ $pdfUrl }}">Ver adjunto</a>
@@ -162,18 +166,20 @@
 
 
 
-            @can('no-editar')
-                <div class="form-group">
-                    {!! Form::label("status", "Estado") !!}
-                    {!! Form::select("status",[ 0 => 'Pendiente', 1 => 'Listo' ], null, ["class" => "form-control disabled"]) !!}
+            <div class="form-group">
+                <label>Estado actual</label>
+                <input type="text" class="form-control" value="{{ $superuser->estado }}" readonly>
+            </div>
 
-                    @error('Estado')
-                        <span class="text-danger">{{$message}}</span>
-                    @enderror
-
+            @if ($readonly)
+                <div class="alert alert-info">
+                    Este testigo está validado o en un estado superior. Solo lectura.
                 </div>
-                {!! Form::submit('Acreditar Testigo', ['class' => 'btn btn-info']) !!}
-            @endcan
+            @else
+                @can('no-editar')
+                    {!! Form::submit('Guardar', ['class' => 'btn btn-info']) !!}
+                @endcan
+            @endif
 
 
 
@@ -223,9 +229,6 @@
     
     
 @endsection
-
-
-
 
 
 

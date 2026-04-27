@@ -15,6 +15,12 @@
     </div>
 @endif
 
+@if (($mesas ?? collect())->isEmpty())
+    <div class="alert alert-warning">
+        No hay mesas cargadas para la elección activa.
+    </div>
+@endif
+
 <div class="card">
     <div class="card-body">
 
@@ -25,6 +31,10 @@
             <thead class="text-white" style="background-color:hsl(209, 36%, 54%)">
                 <tr>
                     <th>#</th>
+                    <th>DD</th>
+                    <th>MM</th>
+                    <th>ZZ</th>
+                    <th>PP</th>
                     <th>Municipio</th>
                     <th>Puesto</th>
                     <th>Mesa</th>
@@ -38,27 +48,31 @@
             </thead>
 
             <tbody>
-            @foreach ($sellers as $seller)
+@foreach ($mesas as $r)
                 <tr>
-                    <td>{{ $seller->id }}</td>
+                    <td>{{ $r->mesa_id ?? '-' }}</td>
+                    <td>{{ $r->dd }}</td>
+                    <td>{{ $r->mm }}</td>
+                    <td>{{ $r->zz }}</td>
+                    <td>{{ $r->pp }}</td>
 
-                    <td>{{ $seller->municipio }}</td>
+                    <td>{{ $r->municipio }}</td>
 
-                    <td style="color: {{ $seller->statusani != 0 && $seller->statusani != null ? 'rgb(0,169,14)' : 'red' }}">
-                        {{ $seller->puesto }}
+                    <td style="color: {{ $r->estado === 'validado' ? 'rgb(0,169,14)' : 'red' }}">
+                        {{ $r->puesto }}
                     </td>
 
-                    <td style="color: {{ $seller->statusani != 0 && $seller->statusani != null ? 'rgb(0,169,14)' : 'red' }}">
-                        {{ $seller->mesa }}
+                    <td style="color: {{ $r->estado === 'validado' ? 'rgb(0,169,14)' : 'red' }}" data-order="{{ $r->mesa_sort ?? 0 }}">
+                        {{ $r->mesa_label }}
                     </td>
 
-                    <td>{{ $seller->candidato }}</td>
-                    <td>{{ $seller->nombre }}</td>
-                    <td>{{ $seller->codescru }}</td>
-                    <td>{{ $seller->observacion }}</td>
+                    <td>-</td>
+                    <td>{{ $r->nombre ?? '-' }}</td>
+                    <td>-</td>
+                    <td>{{ $r->observaciones }}</td>
 
                     <td style="font-size:18px; text-align:center">
-                        @if($seller->statusani == 1)
+                        @if($r->estado === 'validado')
                             <i class="fas fa-vote-yea text-success">.</i>
                         @else
                             <i class="fas fa-window-close text-danger"></i>
@@ -66,10 +80,14 @@
                     </td>
 
                     <td>
-                        <a href="{{ route('admin.ani.edit', $seller) }}"
-                           class="btn btn-{{ $seller->statusani == 1 ? 'secondary' : 'primary' }} btn-sm">
-                            {{ $seller->statusani == 1 ? 'Validado' : 'Validar' }}
-                        </a>
+                        @if (!$r->referido_id)
+                            <span class="text-muted">-</span>
+                        @else
+                            <a href="{{ route('admin.ani.edit', $r->referido_id) }}"
+                               class="btn btn-{{ $r->estado === 'validado' ? 'secondary' : 'primary' }} btn-sm">
+                                {{ $r->estado === 'validado' ? 'Validado' : 'Validar' }}
+                            </a>
+                        @endif
                     </td>
                 </tr>
             @endforeach
@@ -79,6 +97,11 @@
 
     </div>
 </div>
+@if(isset($mesasPage))
+    <div class="mt-3">
+        {{ $mesasPage->links() }}
+    </div>
+@endif
 
 @stop
 
@@ -109,10 +132,12 @@ $(document).ready(function () {
         responsive: true,
         columnDefs: [
             { targets: 0, visible: false },
+            { targets: [1,2,3,4], visible: false },
 
             // Columnas con SearchPanes
-            { searchPanes: { show: true }, targets: [1,2,3,4,6,8] }
+            { searchPanes: { show: true }, targets: [5,6,7,8,10,12] }
         ],
+        order: [[1, 'asc'], [2, 'asc'], [3, 'asc'], [4, 'asc'], [7, 'asc']],
         searchPanes: {
             initCollapsed: true
         },

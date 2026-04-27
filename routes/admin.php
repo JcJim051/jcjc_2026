@@ -31,6 +31,12 @@ use App\Http\Controllers\Admin\FotopmuController;
 use App\Http\Controllers\Admin\TransmisionController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\RoleController;
+use App\Http\Controllers\Admin\EleccionesController;
+use App\Http\Controllers\Admin\TerritorioTokensController;
+use App\Http\Controllers\Admin\ReferidosController;
+use App\Http\Controllers\Admin\CandidatosController;
+use App\Http\Controllers\Admin\ValidacionAniController;
+use App\Http\Controllers\Admin\CneImportController;
 
 Route::get('', [AdminController::class, '__invoke'])->name('admin.home');
 
@@ -45,6 +51,7 @@ Route::resource('testigos', TestigosController::class)->names('admin.testigos');
 Route::resource('consultas', ConsultasController::class)->names('admin.consultas');
 Route::resource('Verpuestos', VerpuestosController::class)->names('admin.verpuestos');
 Route::resource('Ani', AniController::class)->names('admin.ani');
+Route::resource('candidatos', CandidatosController::class)->names('admin.candidatos');
 Route::resource('revision', RevisionController::class)->names('admin.revision');
 Route::resource('posesion', PosesionController::class)->names('admin.posesion');
 Route::resource('Asistencia', AsistenciaController::class)->names('admin.asistencia');
@@ -87,3 +94,28 @@ Route::resource('roles', RoleController::class)->names('admin.roles');
 
 Route::get('/puntos/{mun}', [App\Http\Controllers\Admin\PuestosController::class, 'getByMunicipio'])
     ->name('admin.puntos.byMunicipio');
+
+Route::get('elecciones', [EleccionesController::class, 'index'])->name('admin.elecciones.index');
+Route::post('elecciones', [EleccionesController::class, 'store'])->name('admin.elecciones.store');
+Route::put('elecciones/{eleccion}', [EleccionesController::class, 'update'])->name('admin.elecciones.update');
+Route::post('elecciones/{eleccion}/import-divipol', [EleccionesController::class, 'import'])->name('admin.elecciones.import');
+
+Route::get('territorio-tokens', [TerritorioTokensController::class, 'index'])->name('admin.territorio_tokens.index');
+Route::post('territorio-tokens', [TerritorioTokensController::class, 'store'])->name('admin.territorio_tokens.store');
+Route::get('territorio-tokens/municipios', [TerritorioTokensController::class, 'municipios'])->name('admin.territorio_tokens.municipios');
+Route::get('territorio-tokens/comunas', [TerritorioTokensController::class, 'comunas'])->name('admin.territorio_tokens.comunas');
+Route::post('territorio-tokens/{token}/toggle', [TerritorioTokensController::class, 'toggle'])->name('admin.territorio_tokens.toggle');
+
+Route::get('referidos', [ReferidosController::class, 'index'])->name('admin.referidos.index');
+Route::get('referidos/{referido}/asignar', [ReferidosController::class, 'asignarForm'])->name('admin.referidos.asignar.form');
+Route::post('referidos/{referido}/asignar', [ReferidosController::class, 'asignar'])->name('admin.referidos.asignar');
+Route::get('referidos/{referido}/mesas-disponibles', [ReferidosController::class, 'mesasDisponibles'])->name('admin.referidos.mesas_disponibles');
+Route::post('referidos/{referido}/liberar', [ReferidosController::class, 'liberar'])->name('admin.referidos.liberar');
+
+Route::get('validacion-ani', [ValidacionAniController::class, 'index'])->name('admin.validacion_ani.index');
+Route::get('validacion-ani/{referido}/edit', [ValidacionAniController::class, 'edit'])->name('admin.validacion_ani.edit');
+Route::put('validacion-ani/{referido}', [ValidacionAniController::class, 'update'])->name('admin.validacion_ani.update');
+
+Route::get('cne-import', [CneImportController::class, 'index'])->name('admin.cne_import.index');
+Route::post('cne-import/postulados', [CneImportController::class, 'importarPostulados'])->name('admin.cne_import.postulados');
+Route::post('cne-import/acreditados', [CneImportController::class, 'importarAcreditados'])->name('admin.cne_import.acreditados');

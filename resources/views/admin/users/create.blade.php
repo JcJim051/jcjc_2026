@@ -49,26 +49,17 @@
                             class="form-control select2"
                             form="formUser"
                             multiple>
-                        
                         <option value="0"
                             {{ in_array('0', $candidatosSeleccionados) ? 'selected' : '' }}>
                             General
                         </option>
-            
-                        <option value="101"
-                            {{ in_array('101', $candidatosSeleccionados) ? 'selected' : '' }}>
-                            U101
-                        </option>
-            
-                        <option value="103"
-                            {{ in_array('103', $candidatosSeleccionados) ? 'selected' : '' }}>
-                            U103
-                        </option>
-            
-                        <option value="4"
-                            {{ in_array('4', $candidatosSeleccionados) ? 'selected' : '' }}>
-                            U04
-                        </option>
+
+                        @foreach ($candidatos as $c)
+                            <option value="{{ $c->codigo }}"
+                                {{ in_array((string) $c->codigo, $candidatosSeleccionados) ? 'selected' : '' }}>
+                                {{ $c->codigo }} - {{ $c->nombre }}
+                            </option>
+                        @endforeach
                     </select>
                 </div>
             </div>
