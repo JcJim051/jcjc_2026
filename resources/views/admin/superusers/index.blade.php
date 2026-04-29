@@ -101,7 +101,15 @@
                                     if ($r->estado === 'acreditado') { $label = 'Acreditado'; $class = 'secondary'; }
                                 @endphp
 
-                                @if (!$r->referido_id)
+                                @if (!empty($r->is_remanente))
+                                    @if(!empty($r->abogado_id))
+                                        <a href="{{ route('admin.abogados.show', $r->abogado_id) }}" class="btn btn-info btn-sm">
+                                            Ver coordinador
+                                        </a>
+                                    @else
+                                        <span class="text-muted">-</span>
+                                    @endif
+                                @elseif (!$r->referido_id)
                                     <span class="text-muted">-</span>
                                 @elseif ($r->estado === 'acreditado')
                                     <a href="#" class="btn btn-secondary btn-sm">Acreditado</a>

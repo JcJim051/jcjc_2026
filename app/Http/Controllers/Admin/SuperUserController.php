@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Referido;
 use App\Models\Persona;
 use App\Models\EleccionPuesto;
+use App\Models\AbogadoCoordinacion;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Storage;
@@ -228,6 +229,21 @@ class SuperUserController extends Controller
         });
 
         $remanentesRows = collect();
+        $coordinacionesActivas = AbogadoCoordinacion::query()
+            ->from('abogado_coordinaciones as ac')
+            ->join('abogados as a', 'a.id', '=', 'ac.abogado_id')
+            ->where('ac.eleccion_id', $eleccionId)
+            ->whereNull('ac.released_at')
+            ->orderBy('ac.assigned_at')
+            ->get([
+                'ac.id as coordinacion_id',
+                'ac.abogado_id',
+                'ac.codpuesto',
+                'a.nombre as abogado_nombre',
+                'a.telefono as abogado_telefono',
+            ])
+            ->groupBy('codpuesto');
+
         $puestosPermitidos = $mesasRows
             ->map(fn ($row) => $row->eleccion_puesto_id)
             ->unique()
@@ -244,6 +260,7 @@ class SuperUserController extends Controller
                 'mm',
                 'zz',
                 'pp',
+                'codigo_puesto',
                 'municipio',
                 'puesto',
                 'mesas_total',
@@ -257,16 +274,31 @@ class SuperUserController extends Controller
             }
 
             $remanentes = $total < 10 ? 1 : (int) ceil($total * 0.10);
+            $coordList = collect();
+            $keys = array_filter([
+                (string) ($puesto->codigo_puesto ?? ''),
+                (string) ($puesto->dd ?? '') . (string) ($puesto->mm ?? '') . (string) ($puesto->zz ?? '') . (string) ($puesto->pp ?? ''),
+                (string) ($puesto->pp ?? ''),
+            ]);
+            foreach ($keys as $k) {
+                if ($coordinacionesActivas->has($k)) {
+                    $coordList = $coordinacionesActivas->get($k);
+                    break;
+                }
+            }
             for ($i = 1; $i <= $remanentes; $i++) {
+                $coord = $coordList->get($i - 1);
                 $remanentesRows->push((object) [
                     'mesa_id' => null,
                     'mesa_label' => 'Rem ' . $i,
                     'mesa_sort' => 1000 + $i,
                     'is_remanente' => true,
-                    'estado' => 'remanente',
+                    'estado' => $coord ? 'asignado' : 'remanente',
                     'referido_id' => null,
-                    'nombre' => null,
-                    'telefono' => null,
+                    'nombre' => $coord->abogado_nombre ?? null,
+                    'telefono' => $coord->abogado_telefono ?? null,
+                    'abogado_id' => $coord->abogado_id ?? null,
+                    'coordinacion_id' => $coord->coordinacion_id ?? null,
                     'municipio' => $puesto->municipio,
                     'puesto' => $puesto->puesto,
                     'dd' => $puesto->dd,

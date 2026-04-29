@@ -16,6 +16,23 @@ class TerritorioTokensController extends Controller
         $elecciones = Eleccion::orderByDesc('id')->get();
         $tokens = TerritorioToken::orderByDesc('id')->get();
 
+        $municipiosMap = EleccionPuesto::query()
+            ->whereIn('eleccion_id', $tokens->pluck('eleccion_id')->unique()->values())
+            ->select('eleccion_id', 'dd', 'mm', 'departamento', 'municipio')
+            ->distinct()
+            ->get()
+            ->keyBy(function ($r) {
+                return $r->eleccion_id . '|' . $r->dd . '|' . $r->mm;
+            });
+
+        $tokens = $tokens->map(function ($t) use ($municipiosMap) {
+            $key = $t->eleccion_id . '|' . $t->dd . '|' . $t->mm;
+            $geo = $municipiosMap->get($key);
+            $t->departamento_nombre = $geo->departamento ?? null;
+            $t->municipio_nombre = $geo->municipio ?? null;
+            return $t;
+        });
+
         return view('admin.territorio_tokens.index', compact('elecciones', 'tokens'));
     }
 
@@ -119,5 +136,13 @@ class TerritorioTokensController extends Controller
 
         return redirect()->route('admin.territorio_tokens.index')
             ->with('success', 'Estado del token actualizado.');
+    }
+
+    public function destroy(TerritorioToken $token)
+    {
+        $token->delete();
+
+        return redirect()->route('admin.territorio_tokens.index')
+            ->with('success', 'Token eliminado correctamente.');
     }
 }

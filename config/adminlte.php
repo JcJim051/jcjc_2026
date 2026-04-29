@@ -442,6 +442,26 @@ return [
     'can'  => 'Superuser-administrador-consultor-validador',
 ],
 
+[
+    'text' => 'Abogados',
+    'icon' => 'fas fa-balance-scale',
+    'can'  => 'Superuser-administrador-consultor-auditor',
+    'submenu' => [
+        [
+            'text' => 'Caracterización',
+            'route' => 'admin.abogados.index',
+            'icon' => 'fas fa-users',
+            'can'  => 'Superuser-administrador-consultor-auditor',
+        ],
+        [
+            'text' => 'Reuniones',
+            'route' => 'admin.abogados_reuniones.index',
+            'icon' => 'fas fa-calendar-check',
+            'can'  => 'Superuser-administrador-consultor-auditor',
+        ],
+    ],
+],
+
 [   'text' => 'Verificación de escrutinios',
     'icon' => 'fas fa-thermometer-full',
     'route'  => 'admin.revision.index',

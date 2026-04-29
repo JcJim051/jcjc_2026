@@ -77,6 +77,7 @@
                         <th>ID</th>
                         <th>Eleccion</th>
                         <th>Territorio</th>
+                        <th>Municipio</th>
                         <th>Comuna</th>
                         <th>Token</th>
                         <th>Activo</th>
@@ -89,6 +90,9 @@
                             <td>{{ $t->id }}</td>
                             <td>{{ $t->eleccion_id }}</td>
                             <td>{{ $t->dd }}-{{ $t->mm }}</td>
+                            <td>
+                                {{ $t->departamento_nombre && $t->municipio_nombre ? ($t->departamento_nombre . ' / ' . $t->municipio_nombre) : 'N/D' }}
+                            </td>
                             <td>{{ $t->comuna }}</td>
                             <td>
                                 <small>{{ $t->token }}</small><br>
@@ -99,10 +103,17 @@
                             </td>
                             <td>{{ $t->activo ? 'SI' : 'NO' }}</td>
                             <td>
-                                <form action="{{ route('admin.territorio_tokens.toggle', $t) }}" method="POST">
-                                    @csrf
-                                    <button class="btn btn-sm btn-warning" type="submit">Cambiar</button>
-                                </form>
+                                <div class="d-flex" style="gap:6px;">
+                                    <form action="{{ route('admin.territorio_tokens.toggle', $t) }}" method="POST">
+                                        @csrf
+                                        <button class="btn btn-sm btn-warning" type="submit">Cambiar</button>
+                                    </form>
+                                    <form action="{{ route('admin.territorio_tokens.destroy', $t) }}" method="POST" onsubmit="return confirm('¿Eliminar este token?');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button class="btn btn-sm btn-danger" type="submit">Borrar</button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                     @endforeach

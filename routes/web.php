@@ -2,6 +2,7 @@
 
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AsistenciaReunionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -37,6 +38,14 @@ Route::get('referidos/{token}/divipol/departamentos', [App\Http\Controllers\Publ
     ->name('public.referidos.departamentos');
 Route::get('referidos/{token}/divipol/municipios', [App\Http\Controllers\PublicReferidosController::class, 'municipios'])
     ->name('public.referidos.municipios');
+
+Route::get('/asistencia/reunion/{token}/panel', [AsistenciaReunionController::class, 'panelReunion'])
+    ->name('asistencia.reunion.panel');
+Route::get('/asistencia/reunion/{token}', [AsistenciaReunionController::class, 'mostrarFormularioSesion'])
+    ->middleware('signed:relative')
+    ->name('asistencia.reunion.form');
+Route::post('/asistencia/reunion/{token}', [AsistenciaReunionController::class, 'procesarFormularioSesion'])
+    ->name('asistencia.reunion.submit');
 
 Route::middleware([
     'auth:sanctum',

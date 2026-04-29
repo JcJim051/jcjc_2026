@@ -37,6 +37,8 @@ use App\Http\Controllers\Admin\ReferidosController;
 use App\Http\Controllers\Admin\CandidatosController;
 use App\Http\Controllers\Admin\ValidacionAniController;
 use App\Http\Controllers\Admin\CneImportController;
+use App\Http\Controllers\Admin\AbogadosController;
+use App\Http\Controllers\Admin\ReunionesAbogadosController;
 
 Route::get('', [AdminController::class, '__invoke'])->name('admin.home');
 
@@ -91,6 +93,14 @@ Route::post('admin/users/import', [UserController::class, 'import'])->name('admi
 Route::resource('users', UserController::class)->names('admin.users');
 
 Route::resource('roles', RoleController::class)->names('admin.roles');
+Route::resource('abogados', AbogadosController::class)->names('admin.abogados');
+Route::post('abogados/{abogado}/asignar-coordinador', [AbogadosController::class, 'asignarCoordinador'])
+    ->name('admin.abogados.asignar_coordinador');
+Route::resource('abogados-reuniones', ReunionesAbogadosController::class)
+    ->only(['index', 'create', 'store'])
+    ->names('admin.abogados_reuniones');
+Route::get('abogados-reuniones/{reunion}/qr', [ReunionesAbogadosController::class, 'qrAsistencia'])
+    ->name('admin.abogados_reuniones.qr');
 
 Route::get('/puntos/{mun}', [App\Http\Controllers\Admin\PuestosController::class, 'getByMunicipio'])
     ->name('admin.puntos.byMunicipio');
@@ -105,6 +115,7 @@ Route::post('territorio-tokens', [TerritorioTokensController::class, 'store'])->
 Route::get('territorio-tokens/municipios', [TerritorioTokensController::class, 'municipios'])->name('admin.territorio_tokens.municipios');
 Route::get('territorio-tokens/comunas', [TerritorioTokensController::class, 'comunas'])->name('admin.territorio_tokens.comunas');
 Route::post('territorio-tokens/{token}/toggle', [TerritorioTokensController::class, 'toggle'])->name('admin.territorio_tokens.toggle');
+Route::delete('territorio-tokens/{token}', [TerritorioTokensController::class, 'destroy'])->name('admin.territorio_tokens.destroy');
 
 Route::get('referidos', [ReferidosController::class, 'index'])->name('admin.referidos.index');
 Route::get('referidos/{referido}/asignar', [ReferidosController::class, 'asignarForm'])->name('admin.referidos.asignar.form');
@@ -115,6 +126,8 @@ Route::post('referidos/{referido}/liberar', [ReferidosController::class, 'libera
 Route::get('validacion-ani', [ValidacionAniController::class, 'index'])->name('admin.validacion_ani.index');
 Route::get('validacion-ani/{referido}/edit', [ValidacionAniController::class, 'edit'])->name('admin.validacion_ani.edit');
 Route::put('validacion-ani/{referido}', [ValidacionAniController::class, 'update'])->name('admin.validacion_ani.update');
+Route::get('validacion-ani-coordinador/{coordinacion}/edit', [ValidacionAniController::class, 'editCoordinador'])->name('admin.validacion_ani.coordinador.edit');
+Route::put('validacion-ani-coordinador/{coordinacion}', [ValidacionAniController::class, 'updateCoordinador'])->name('admin.validacion_ani.coordinador.update');
 
 Route::get('cne-import', [CneImportController::class, 'index'])->name('admin.cne_import.index');
 Route::post('cne-import/postulados', [CneImportController::class, 'importarPostulados'])->name('admin.cne_import.postulados');

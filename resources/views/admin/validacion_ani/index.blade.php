@@ -28,6 +28,7 @@
                         <th>Municipio</th>
                         <th>Puesto</th>
                         <th>Mesa</th>
+                        <th>Tipo</th>
                         <th>Estado</th>
                         <th>PDF</th>
                         <th>Acción</th>
@@ -47,6 +48,13 @@
                             <td style="color: {{ $color }}">{{ $r->municipio }}</td>
                             <td style="color: {{ $color }}">{{ $r->puesto }}</td>
                             <td style="color: {{ $color }}">{{ $r->mesa_num }}</td>
+                            <td>
+                                @if(($r->tipo_fila ?? 'referido') === 'coordinador')
+                                    <span class="badge badge-info">Coordinador Rem</span>
+                                @else
+                                    <span class="badge badge-secondary">Referido</span>
+                                @endif
+                            </td>
                             <td style="font-size:20px; text-align:center">
                                 @if($ok)
                                     <i class="fas fa-vote-yea" style="color:rgb(22,161,22)">
@@ -59,15 +67,29 @@
                                 @endif
                             </td>
                             <td>
-                                <a class="btn btn-sm btn-info" href="{{ asset('storage/' . $r->cedula_pdf_path) }}" target="_blank">
-                                    Ver PDF
-                                </a>
+                                @if(!empty($r->cedula_pdf_path))
+                                    <a class="btn btn-sm btn-info" href="{{ asset('storage/' . $r->cedula_pdf_path) }}" target="_blank">
+                                        Ver PDF
+                                    </a>
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
                             </td>
                             <td>
-                                <a class="btn btn-sm {{ $ok ? 'btn-success' : 'btn-primary' }}"
-                                    href="{{ route('admin.validacion_ani.edit', $r->id) }}">
-                                    {{ $ok ? 'Ver' : 'Validar' }}
-                                </a>
+                                @if(($r->tipo_fila ?? 'referido') === 'coordinador')
+                                    @php
+                                        $okCoord = in_array($r->estado, ['validado', 'acreditado'], true);
+                                    @endphp
+                                    <a class="btn btn-sm {{ $okCoord ? 'btn-success' : 'btn-primary' }}"
+                                        href="{{ route('admin.validacion_ani.coordinador.edit', $r->coordinacion_id) }}">
+                                        {{ $okCoord ? 'Ver' : 'Validar' }}
+                                    </a>
+                                @else
+                                    <a class="btn btn-sm {{ $ok ? 'btn-success' : 'btn-primary' }}"
+                                        href="{{ route('admin.validacion_ani.edit', $r->id) }}">
+                                        {{ $ok ? 'Ver' : 'Validar' }}
+                                    </a>
+                                @endif
                             </td>
                         </tr>
                     @endforeach
