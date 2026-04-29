@@ -79,6 +79,8 @@
                         <th>Territorio</th>
                         <th>Municipio</th>
                         <th>Comuna</th>
+                        <th>Mesas</th>
+                        <th>Referidos</th>
                         <th>Token</th>
                         <th>Activo</th>
                         <th>Accion</th>
@@ -94,6 +96,8 @@
                                 {{ $t->departamento_nombre && $t->municipio_nombre ? ($t->departamento_nombre . ' / ' . $t->municipio_nombre) : 'N/D' }}
                             </td>
                             <td>{{ $t->comuna }}</td>
+                            <td><span class="badge badge-info">{{ $t->mesas_total ?? 0 }}</span></td>
+                            <td><span class="badge badge-success">{{ $t->referidos_total ?? 0 }}</span></td>
                             <td>
                                 <small>{{ $t->token }}</small><br>
                                 <small>

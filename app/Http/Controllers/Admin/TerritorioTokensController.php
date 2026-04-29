@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Eleccion;
 use App\Models\EleccionPuesto;
+use App\Models\Referido;
 use App\Models\TerritorioToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class TerritorioTokensController extends Controller
 {
@@ -30,6 +32,18 @@ class TerritorioTokensController extends Controller
             $geo = $municipiosMap->get($key);
             $t->departamento_nombre = $geo->departamento ?? null;
             $t->municipio_nombre = $geo->municipio ?? null;
+
+            $mesasQuery = DB::table('eleccion_mesas as em')
+                ->join('eleccion_puestos as ep', 'ep.id', '=', 'em.eleccion_puesto_id')
+                ->where('em.eleccion_id', $t->eleccion_id)
+                ->where('ep.dd', $t->dd)
+                ->where('ep.mm', $t->mm);
+            if (!empty($t->comuna)) {
+                $mesasQuery->where('ep.comuna', $t->comuna);
+            }
+            $t->mesas_total = (int) $mesasQuery->count();
+
+            $t->referidos_total = (int) Referido::where('territorio_token_id', $t->id)->count();
             return $t;
         });
 
