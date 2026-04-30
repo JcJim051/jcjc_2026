@@ -8,6 +8,7 @@ use App\Models\AbogadoCoordinacion;
 use App\Models\Eleccion;
 use App\Models\Puestos;
 use App\Models\Seller;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -199,6 +200,107 @@ class AbogadosController extends Controller
         return redirect()->route('admin.abogados.index')->with('info', 'Abogado eliminado correctamente.');
     }
 
+    public function importFromSheet(Request $request)
+    {
+        $data = $request->validate([
+            'spreadsheet_url' => 'nullable|url',
+            'gid' => 'nullable|numeric',
+            'csv_file' => 'nullable|file|mimes:csv,txt|max:5120',
+        ]);
+
+        if (!$request->hasFile('csv_file') && empty($data['spreadsheet_url'])) {
+            return back()->withErrors(['spreadsheet_url' => 'Debes enviar URL de Google Sheets o archivo CSV.']);
+        }
+
+        if ($request->hasFile('csv_file')) {
+            $raw = file_get_contents($request->file('csv_file')->getRealPath());
+            $rows = array_map('str_getcsv', preg_split("/\r\n|\n|\r/", trim((string) $raw)));
+        } else {
+            $sheetId = $this->extractSheetId((string) $data['spreadsheet_url']);
+            if (!$sheetId) {
+                return back()->withErrors(['spreadsheet_url' => 'URL de Google Sheets no válida.']);
+            }
+
+            $gid = isset($data['gid']) && $data['gid'] !== '' ? (string) $data['gid'] : '0';
+            $csvUrl = "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=csv&gid={$gid}";
+            $resp = Http::timeout(45)->get($csvUrl);
+            if (!$resp->ok()) {
+                return back()->withErrors(['spreadsheet_url' => 'No se pudo descargar la hoja. Usa CSV si el servidor bloquea Google.']);
+            }
+            $rows = array_map('str_getcsv', preg_split("/\r\n|\n|\r/", trim((string) $resp->body())));
+        }
+        if (count($rows) < 2) {
+            return back()->withErrors(['spreadsheet_url' => 'La hoja no tiene datos para importar.']);
+        }
+
+        $header = array_map(fn ($h) => $this->normalizeHeader((string) $h), $rows[0]);
+        $idx = array_flip($header);
+
+        $created = 0;
+        $updated = 0;
+        foreach (array_slice($rows, 1) as $row) {
+            if (count(array_filter($row, fn ($v) => trim((string) $v) !== '')) === 0) {
+                continue;
+            }
+
+            $cc = trim((string) $this->valueByAliases($row, $idx, ['cedula', 'cedula_de_ciudadania', 'cc']));
+            $nombre = trim((string) $this->valueByAliases($row, $idx, ['nombre_completo', 'nombre']));
+            if ($cc === '' || $nombre === '') {
+                continue;
+            }
+
+            $puestoTexto = trim((string) $this->valueByAliases($row, $idx, [
+                'puesto_de_votacion',
+                'puesto',
+                'puesto_de_votacion_',
+            ]));
+            $puestoEstructurado = $this->normalizePuestoForSelect($puestoTexto);
+
+            $payload = [
+                'nombre' => $nombre,
+                'cc' => $cc,
+                'correo' => trim((string) $this->valueByAliases($row, $idx, ['correo', 'email'])) ?: ($cc . '@sin-correo.local'),
+                'direccion' => trim((string) $this->valueByAliases($row, $idx, ['direccion', 'direccion_de_residencia'])) ?: 'N/D',
+                'telefono' => 'N/D',
+                'comuna' => 'N/D',
+                'puesto' => $puestoEstructurado ?: ($puestoTexto ?: 'N/D'),
+                'mesa' => trim((string) $this->valueByAliases($row, $idx, ['mesa'])) ?: 'N/D',
+                'activo' => true,
+            ];
+
+            $pdfLink = trim((string) $this->valueByAliases($row, $idx, [
+                'pdf_de_la_cedula',
+                'pdf_cedula',
+            ]));
+            $fotoLink = trim((string) $this->valueByAliases($row, $idx, [
+                'cargar_foto',
+                'cargar_foto_',
+                'foto',
+            ]));
+            $obsParts = [];
+            if ($pdfLink !== '') {
+                $obsParts[] = 'PDF origen: ' . $pdfLink;
+            }
+            if ($fotoLink !== '') {
+                $obsParts[] = 'FOTO origen: ' . $fotoLink;
+            }
+            if (!empty($obsParts)) {
+                $payload['observacion'] = implode(' | ', $obsParts);
+            }
+
+            $abogado = Abogado::where('cc', $cc)->first();
+            if ($abogado) {
+                $abogado->fill($payload)->save();
+                $updated++;
+            } else {
+                Abogado::create($payload);
+                $created++;
+            }
+        }
+
+        return back()->with('info', "Importación completada. Nuevos: {$created}. Actualizados: {$updated}.");
+    }
+
     public function asignarCoordinador(Request $request, Abogado $abogado)
     {
         $data = $request->validate([
@@ -276,5 +378,66 @@ class AbogadosController extends Controller
         }
 
         return [trim($parts[0]), trim($parts[1])];
+    }
+
+    private function extractSheetId(string $url): ?string
+    {
+        if (preg_match('~/spreadsheets/d/([a-zA-Z0-9-_]+)~', $url, $m)) {
+            return $m[1];
+        }
+        return null;
+    }
+
+    private function normalizeHeader(string $value): string
+    {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $trans = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if ($trans !== false) {
+            $value = $trans;
+        }
+        $value = preg_replace('/[^a-z0-9]+/', '_', $value);
+        return trim((string) $value, '_');
+    }
+
+    private function valueByAliases(array $row, array $idx, array $aliases): string
+    {
+        foreach ($aliases as $alias) {
+            if (array_key_exists($alias, $idx)) {
+                return (string) ($row[$idx[$alias]] ?? '');
+            }
+        }
+        return '';
+    }
+
+    private function normalizePuestoForSelect(string $raw): ?string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        // Si ya viene con la estructura actual (MUNICIPIO - PUESTO), se conserva.
+        if (strpos($raw, ' - ') !== false) {
+            return $raw;
+        }
+
+        // Busca el puesto por nombre para guardar con la estructura del select actual.
+        $puesto = Puestos::query()
+            ->whereRaw('LOWER(TRIM(nombre)) = ?', [mb_strtolower($raw)])
+            ->orderBy('mun')
+            ->first();
+
+        if (!$puesto) {
+            $puesto = Puestos::query()
+                ->where('nombre', 'like', '%' . $raw . '%')
+                ->orderBy('mun')
+                ->first();
+        }
+
+        if (!$puesto) {
+            return null;
+        }
+
+        return trim(($puesto->mun ?? '') . ' - ' . ($puesto->nombre ?? $raw), ' -');
     }
 }

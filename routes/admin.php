@@ -96,6 +96,8 @@ Route::resource('roles', RoleController::class)->names('admin.roles');
 Route::resource('abogados', AbogadosController::class)->names('admin.abogados');
 Route::post('abogados/{abogado}/asignar-coordinador', [AbogadosController::class, 'asignarCoordinador'])
     ->name('admin.abogados.asignar_coordinador');
+Route::post('abogados/import-sheet', [AbogadosController::class, 'importFromSheet'])
+    ->name('admin.abogados.import_sheet');
 Route::resource('abogados-reuniones', ReunionesAbogadosController::class)
     ->only(['index', 'create', 'store'])
     ->names('admin.abogados_reuniones');

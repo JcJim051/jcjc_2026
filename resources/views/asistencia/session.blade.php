@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Registro de Asistencia</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 </head>
 <body class="bg-light">
     <div class="container py-5">
@@ -36,12 +37,27 @@
 
                             <div class="mb-3">
                                 <label class="form-label" for="cc">Cédula</label>
-                                <input class="form-control" type="text" id="cc" name="cc" required>
+                                <input class="form-control" type="text" id="cc" name="cc" value="{{ old('cc') }}" required>
                             </div>
 
                             <div class="mb-3">
                                 <label class="form-label" for="correo">Correo registrado</label>
-                                <input class="form-control" type="email" id="correo" name="correo" required>
+                                <input class="form-control" type="email" id="correo" name="correo" value="{{ old('correo') }}" required>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label" for="telefono">Celular</label>
+                                <input class="form-control" type="text" id="telefono" name="telefono" value="{{ old('telefono') }}" placeholder="Ej: 3100000000">
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label" for="puesto">Puesto de votación</label>
+                                <select class="form-control js-puesto-select" id="puesto" name="puesto">
+                                    <option value="">Seleccione...</option>
+                                    @foreach(($puestos ?? collect()) as $p)
+                                        <option value="{{ $p }}" {{ old('puesto') === $p ? 'selected' : '' }}>{{ $p }}</option>
+                                    @endforeach
+                                </select>
                             </div>
 
                             <button type="submit" class="btn btn-primary w-100">Registrar asistencia</button>
@@ -51,6 +67,15 @@
             </div>
         </div>
     </div>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script>
+        $(function () {
+            $('.js-puesto-select').select2({
+                width: '100%',
+                placeholder: 'Buscar puesto...'
+            });
+        });
+    </script>
 </body>
 </html>
-
