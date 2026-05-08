@@ -85,6 +85,21 @@ class MigrateAbogadosAdjuntos extends Command
             return null;
         }
 
+        // Algunos enlaces de Drive devuelven HTML de confirmación; intentamos resolver descarga real.
+        if ($resp->ok() && str_contains(strtolower((string) $resp->header('Content-Type')), 'text/html')) {
+            $resolved = $this->resolveGoogleDriveConfirmUrl((string) $resp->body());
+            if ($resolved) {
+                try {
+                    $resp = Http::timeout(60)->withHeaders([
+                        'User-Agent' => 'Mozilla/5.0',
+                    ])->get($resolved);
+                } catch (\Throwable $e) {
+                    $this->warn("Error en confirmación Drive {$url}: {$e->getMessage()}");
+                    return null;
+                }
+            }
+        }
+
         if (!$resp->ok()) {
             $this->warn("No se pudo descargar {$url} (HTTP {$resp->status()})");
             return null;
@@ -96,8 +111,20 @@ class MigrateAbogadosAdjuntos extends Command
             return null;
         }
 
+        // Evita guardar HTML como .pdf/.jpg (causa archivos "en blanco").
+        if ($this->looksLikeHtml($bytes)) {
+            $this->warn("Contenido HTML recibido en lugar de archivo binario para {$url}");
+            return null;
+        }
+
         $mime = (string) $resp->header('Content-Type');
         $ext = $this->detectExtension($mime, $bytes, $kind);
+
+        if ($kind === 'pdf' && !$this->looksLikePdf($bytes)) {
+            $this->warn("El adjunto no parece PDF válido: {$url}");
+            return null;
+        }
+
         $safe = preg_replace('/[^a-zA-Z0-9_-]/', '_', $baseName);
         $file = "{$dir}/{$safe}_" . Str::random(8) . ".{$ext}";
 
@@ -143,5 +170,28 @@ class MigrateAbogadosAdjuntos extends Command
         }
         return $kind === 'img' ? 'jpg' : 'pdf';
     }
-}
 
+    private function looksLikePdf(string $bytes): bool
+    {
+        return str_starts_with($bytes, '%PDF');
+    }
+
+    private function looksLikeHtml(string $bytes): bool
+    {
+        $head = mb_strtolower(substr(trim($bytes), 0, 300));
+        return str_contains($head, '<!doctype html')
+            || str_contains($head, '<html')
+            || str_contains($head, '<body');
+    }
+
+    private function resolveGoogleDriveConfirmUrl(string $html): ?string
+    {
+        if (preg_match('/href="(\/uc\?export=download[^"]+)"/i', $html, $m)) {
+            return 'https://drive.google.com' . str_replace('&amp;', '&', $m[1]);
+        }
+        if (preg_match('/action="(https:\/\/drive\.google\.com\/uc\?export=download[^"]*)"/i', $html, $m)) {
+            return str_replace('&amp;', '&', $m[1]);
+        }
+        return null;
+    }
+}

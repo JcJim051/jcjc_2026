@@ -269,6 +269,14 @@ class PublicReferidosController extends Controller
             ->orderBy('puesto')
             ->get(['id', 'puesto', 'municipio', 'mesas_total']);
 
+        // En edición: mostrar el puesto actual y los que aún tengan mesas libres globalmente.
+        $puestos = $puestos->filter(function ($p) use ($tokenRow, $referido) {
+            if ((int) $p->id === (int) $referido->eleccion_puesto_id) {
+                return true;
+            }
+            return $this->getMesasDisponibles((int) $tokenRow->eleccion_id, (int) $p->id)->count() > 0;
+        })->values();
+
         $mesasDisponibles = $this->getMesasDisponibles(
             (int) $referido->eleccion_id,
             (int) $referido->eleccion_puesto_id,
@@ -483,12 +491,19 @@ class PublicReferidosController extends Controller
         $items = $query
             ->orderBy('puesto')
             ->limit(50)
-            ->get()
-            ->map(fn ($r) => [
-                'id' => $r->id,
-                'text' => $r->puesto . ' - ' . $r->municipio,
-                'mesas_total' => $r->mesas_total,
-            ]);
+            ->get(['id', 'puesto', 'municipio', 'mesas_total'])
+            ->map(function ($r) use ($tokenRow) {
+                $mesasDisponibles = $this->getMesasDisponibles((int) $tokenRow->eleccion_id, (int) $r->id);
+
+                return [
+                    'id' => $r->id,
+                    'text' => $r->puesto . ' - ' . $r->municipio,
+                    'mesas_total' => (int) $r->mesas_total,
+                    'mesas_disponibles' => $mesasDisponibles->count(),
+                ];
+            })
+            ->filter(fn ($r) => (int) ($r['mesas_disponibles'] ?? 0) > 0)
+            ->values();
 
         return response()->json(['results' => $items]);
     }
