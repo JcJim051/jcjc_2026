@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Eleccion;
 use App\Models\EleccionPuesto;
 use App\Models\Persona;
 use App\Models\Referido;
@@ -85,6 +86,11 @@ class PublicReferidosController extends Controller
             return back()->withErrors(['mesa_num' => 'La mesa excede el total permitido para este puesto.']);
         }
 
+        $cupo = $this->getCupoMetrics((int) $tokenRow->eleccion_id, (int) $puesto->id);
+        if ((int) $cupo['espacios_40_libres'] <= 0) {
+            return back()->withErrors(['puesto_id' => 'Este puesto ya alcanzo su meta de cobertura para esta eleccion.'])->withInput();
+        }
+
         $mesaOcupada = Referido::query()
             ->where('eleccion_id', $tokenRow->eleccion_id)
             ->where('eleccion_puesto_id', $puesto->id)
@@ -136,6 +142,7 @@ class PublicReferidosController extends Controller
     public function seguimiento(string $token)
     {
         $tokenRow = $this->getTokenOrFail($token, false);
+        $metaPct = $this->getMetaPctByEleccion((int) $tokenRow->eleccion_id);
 
         $municipio = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
             ->where('dd', $tokenRow->dd)
@@ -195,8 +202,9 @@ class PublicReferidosController extends Controller
             ->get()
             ->keyBy('eleccion_puesto_id');
 
-        $puestosAlcance = $puestosAlcance->map(function ($p) use ($referidosAggPorPuesto) {
+        $puestosAlcance = $puestosAlcance->map(function ($p) use ($referidosAggPorPuesto, $metaPct) {
                 $mesasTotal = (int) $p->mesas_total;
+                $metaObjetivo = (int) floor($mesasTotal * ($metaPct / 100));
                 $remanentesTotal = 0;
                 if ($mesasTotal > 0) {
                     $remanentesTotal = $mesasTotal < 10 ? 1 : (int) ceil($mesasTotal * 0.10);
@@ -209,6 +217,7 @@ class PublicReferidosController extends Controller
                     'municipio' => $p->municipio,
                     'puesto' => $p->puesto,
                     'mesas_total' => $mesasTotal,
+                    'meta_objetivo' => $metaObjetivo,
                     'remanentes_total' => $remanentesTotal,
                     'total_referidos' => $totalReferidos,
                     'c_referido' => (int) ($agg->c_referido ?? 0),
@@ -216,12 +225,13 @@ class PublicReferidosController extends Controller
                     'c_validado' => (int) ($agg->c_validado ?? 0),
                     'c_postulado' => (int) ($agg->c_postulado ?? 0),
                     'c_acreditado' => (int) ($agg->c_acreditado ?? 0),
-                    'faltantes' => max($mesasTotal - $totalReferidos, 0),
+                    'faltantes' => max($metaObjetivo - $totalReferidos, 0),
                 ];
             });
 
         return view('public.referidos.seguimiento', [
             'token' => $tokenRow,
+            'meta_pct' => $metaPct,
             'municipio' => $municipio?->municipio,
             'referidos' => $referidos,
             'puestos_alcance' => $puestosAlcance,
@@ -336,6 +346,11 @@ class PublicReferidosController extends Controller
             return back()->withErrors(['mesa_num' => 'La mesa excede el total permitido para este puesto.'])->withInput();
         }
 
+        $cupo = $this->getCupoMetrics((int) $referido->eleccion_id, (int) $puesto->id, (int) $referido->id);
+        if ((int) $cupo['espacios_40_libres'] <= 0) {
+            return back()->withErrors(['puesto_id' => 'Este puesto ya alcanzo su meta de cobertura para esta eleccion.'])->withInput();
+        }
+
         $mesaOcupada = Referido::query()
             ->where('eleccion_id', $referido->eleccion_id)
             ->where('eleccion_puesto_id', $puesto->id)
@@ -415,10 +430,20 @@ class PublicReferidosController extends Controller
             (int) $puesto->id,
             (int) ($data['referido_id'] ?? 0)
         );
+        $cupo = $this->getCupoMetrics(
+            (int) $tokenRow->eleccion_id,
+            (int) $puesto->id,
+            (int) ($data['referido_id'] ?? 0)
+        );
 
         return response()->json([
             'results' => $mesas->map(fn ($m) => ['id' => $m, 'text' => 'Mesa ' . $m]),
             'max' => (int) $puesto->mesas_total,
+            'mesas_no_asignadas' => (int) $mesas->count(),
+            'meta_pct' => (int) $cupo['meta_pct'],
+            'meta_objetivo' => (int) $cupo['meta_objetivo'],
+            'ocupados_meta' => (int) $cupo['ocupados_meta'],
+            'espacios_40_libres' => (int) $cupo['espacios_40_libres'],
         ]);
     }
 
@@ -494,15 +519,24 @@ class PublicReferidosController extends Controller
             ->get(['id', 'puesto', 'municipio', 'mesas_total'])
             ->map(function ($r) use ($tokenRow) {
                 $mesasDisponibles = $this->getMesasDisponibles((int) $tokenRow->eleccion_id, (int) $r->id);
+                $cupo = $this->getCupoMetrics((int) $tokenRow->eleccion_id, (int) $r->id);
 
                 return [
                     'id' => $r->id,
                     'text' => $r->puesto . ' - ' . $r->municipio,
                     'mesas_total' => (int) $r->mesas_total,
                     'mesas_disponibles' => $mesasDisponibles->count(),
+                    'mesas_no_asignadas' => $mesasDisponibles->count(),
+                    'meta_pct' => (int) $cupo['meta_pct'],
+                    'meta_objetivo' => (int) $cupo['meta_objetivo'],
+                    'ocupados_meta' => (int) $cupo['ocupados_meta'],
+                    'espacios_40_libres' => (int) $cupo['espacios_40_libres'],
                 ];
             })
-            ->filter(fn ($r) => (int) ($r['mesas_disponibles'] ?? 0) > 0)
+            ->filter(function ($r) {
+                return (int) ($r['mesas_disponibles'] ?? 0) > 0
+                    && (int) ($r['espacios_40_libres'] ?? 0) > 0;
+            })
             ->values();
 
         return response()->json(['results' => $items]);
@@ -560,5 +594,42 @@ class PublicReferidosController extends Controller
         return collect(range(1, (int) $puesto->mesas_total))
             ->reject(fn ($mesa) => in_array((int) $mesa, $ocupadas, true))
             ->values();
+    }
+
+    private function getMetaPctByEleccion(int $eleccionId): int
+    {
+        $pct = Eleccion::where('id', $eleccionId)->value('meta_testigos_pct');
+        if ($pct === null) {
+            return 100;
+        }
+        return max(0, min(100, (int) $pct));
+    }
+
+    private function getCupoMetrics(int $eleccionId, int $puestoId, int $excludeReferidoId = 0): array
+    {
+        $mesasTotal = (int) DB::table('eleccion_mesas')
+            ->where('eleccion_id', $eleccionId)
+            ->where('eleccion_puesto_id', $puestoId)
+            ->count();
+
+        $metaPct = $this->getMetaPctByEleccion($eleccionId);
+        $metaObjetivo = (int) floor($mesasTotal * ($metaPct / 100));
+
+        $ocupados = Referido::query()
+            ->where('eleccion_id', $eleccionId)
+            ->where('eleccion_puesto_id', $puestoId)
+            ->when($excludeReferidoId > 0, function ($q) use ($excludeReferidoId) {
+                $q->where('id', '<>', $excludeReferidoId);
+            })
+            ->where('estado', '<>', 'rechazado')
+            ->count();
+
+        return [
+            'mesas_total' => $mesasTotal,
+            'meta_pct' => $metaPct,
+            'meta_objetivo' => $metaObjetivo,
+            'ocupados_meta' => (int) $ocupados,
+            'espacios_40_libres' => max($metaObjetivo - (int) $ocupados, 0),
+        ];
     }
 }

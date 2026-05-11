@@ -218,8 +218,7 @@
                         <tr>
                             <th>Municipio</th>
                             <th>Puesto</th>
-                            <th>Total</th>
-                            <th>Remanentes</th>
+                            <th>Meta ({{ $meta_pct ?? 100 }}%)</th>
                             <th>Registrados</th>
                             <th>Asignado</th>
                             <th>Validado</th>
@@ -229,7 +228,6 @@
                     <tbody>
                         @php
                             $sumTotal = 0;
-                            $sumRemanentes = 0;
                             $sumRegistrados = 0;
                             $sumAsignado = 0;
                             $sumValidado = 0;
@@ -237,8 +235,7 @@
                         @endphp
                         @forelse (($puestos_alcance ?? collect()) as $p)
                             @php
-                                $sumTotal += (int) $p->mesas_total;
-                                $sumRemanentes += (int) $p->remanentes_total;
+                                $sumTotal += (int) ($p->meta_objetivo ?? 0);
                                 $sumRegistrados += (int) $p->total_referidos;
                                 $sumAsignado += (int) $p->c_asignado;
                                 $sumValidado += (int) $p->c_validado;
@@ -247,8 +244,7 @@
                             <tr>
                                 <td>{{ $p->municipio ?? 'N/D' }}</td>
                                 <td>{{ $p->puesto ?? 'N/D' }}</td>
-                                <td>{{ $p->mesas_total }}</td>
-                                <td>{{ $p->remanentes_total }}</td>
+                                <td>{{ $p->meta_objetivo ?? 0 }}</td>
                                 <td><strong>{{ $p->total_referidos }}</strong></td>
                                 <td>{{ $p->c_asignado }}</td>
                                 <td>{{ $p->c_validado }}</td>
@@ -258,7 +254,6 @@
                                 <tr style="background:#eef5ff; font-weight:700;">
                                     <td colspan="2">TOTAL</td>
                                     <td>{{ $sumTotal }}</td>
-                                    <td>{{ $sumRemanentes }}</td>
                                     <td>{{ $sumRegistrados }}</td>
                                     <td>{{ $sumAsignado }}</td>
                                     <td>{{ $sumValidado }}</td>
@@ -267,7 +262,7 @@
                             @endif
                         @empty
                             <tr>
-                                <td colspan="8" class="text-center text-muted">No hay puestos en el alcance actual.</td>
+                                <td colspan="7" class="text-center text-muted">No hay puestos en el alcance actual.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -282,7 +277,6 @@
                             <th>Nombre</th>
                             <th>Correo</th>
                             <th>Teléfono</th>
-                            <th>Municipio</th>
                             <th>Puesto</th>
                             <th>Mesa</th>
                             <th>Estado</th>
@@ -309,7 +303,6 @@
                                 <td>{{ $r->nombre }}</td>
                                 <td>{{ $r->email }}</td>
                                 <td>{{ $r->telefono }}</td>
-                                <td>{{ $r->municipio }}</td>
                                 <td>{{ $r->puesto }}</td>
                                 <td>{{ $r->mesa_num }}</td>
                                 <td><span class="badge-estado {{ $badgeClass }}">{{ $r->estado }}</span></td>
@@ -343,10 +336,10 @@
             pageLength: 25,
             responsive: true,
             scrollX: true,
-            order: [[10, 'desc']],
+            order: [[9, 'desc']],
             columnDefs: [
-                { responsivePriority: 1, targets: [0, 1, 7, 11] },
-                { responsivePriority: 2, targets: [6, 10] }
+                { responsivePriority: 1, targets: [0, 1, 6, 10] },
+                { responsivePriority: 2, targets: [5, 9] }
             ],
             language: {
                 search: 'Buscar:',

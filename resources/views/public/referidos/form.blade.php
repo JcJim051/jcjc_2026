@@ -149,6 +149,7 @@
                             <option value="">Seleccione</option>
                         </select>
                         <small id="mesa_help" class="form-text text-muted"></small>
+                        <small id="cupo_help" class="form-text text-muted"></small>
                     </div>
                     <div class="form-group col-md-4">
                         <label for="cedula_pdf">PDF cédula (máx 2MB)</label>
@@ -192,8 +193,18 @@ $(function(){
         var puestoId = data && data.id ? data.id : null;
         var mesaSelect = $('#mesa_num');
         mesaSelect.empty().append('<option value=\"\">Seleccione</option>');
-        if (data && data.mesas_total) {
+        if (data && data.mesas_no_asignadas !== undefined) {
+            $('#mesa_help').text('Mesas no asignadas: ' + data.mesas_no_asignadas);
+        } else if (data && data.mesas_total) {
             $('#mesa_help').text('Mesas disponibles: 1 a ' + data.mesas_total);
+        }
+        if (data && data.meta_objetivo !== undefined) {
+            $('#cupo_help').text(
+                'Espacios meta (' + (data.meta_pct || 100) + '%): ' + (data.espacios_40_libres || 0)
+                + ' libres de ' + data.meta_objetivo
+            );
+        } else {
+            $('#cupo_help').text('');
         }
 
         if (!puestoId) {
@@ -210,16 +221,29 @@ $(function(){
             var items = (resp && resp.results) ? resp.results : [];
             if (!items.length) {
                 $('#mesa_help').text('No hay mesas disponibles para este puesto.');
+                if (resp && resp.meta_objetivo !== undefined) {
+                    $('#cupo_help').text(
+                        'Espacios meta (' + (resp.meta_pct || 100) + '%): ' + (resp.espacios_40_libres || 0)
+                        + ' libres de ' + resp.meta_objetivo
+                    );
+                }
                 return;
             }
             items.forEach(function (it) {
                 mesaSelect.append('<option value=\"' + it.id + '\">' + it.text + '</option>');
             });
-            if (resp && resp.max) {
-                $('#mesa_help').text('Mesas disponibles para este puesto: 1 a ' + resp.max);
+            if (resp) {
+                $('#mesa_help').text('Mesas no asignadas: ' + (resp.mesas_no_asignadas || items.length));
+                if (resp.meta_objetivo !== undefined) {
+                    $('#cupo_help').text(
+                        'Espacios meta (' + (resp.meta_pct || 100) + '%): ' + (resp.espacios_40_libres || 0)
+                        + ' libres de ' + resp.meta_objetivo
+                    );
+                }
             }
         }).fail(function () {
             $('#mesa_help').text('No se pudieron cargar las mesas disponibles.');
+            $('#cupo_help').text('');
         });
     });
 

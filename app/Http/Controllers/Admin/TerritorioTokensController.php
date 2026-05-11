@@ -32,6 +32,9 @@ class TerritorioTokensController extends Controller
             $geo = $municipiosMap->get($key);
             $t->departamento_nombre = $geo->departamento ?? null;
             $t->municipio_nombre = $geo->municipio ?? null;
+            $metaPct = (int) (Eleccion::where('id', $t->eleccion_id)->value('meta_testigos_pct') ?? 100);
+            $metaPct = max(0, min(100, $metaPct));
+            $t->meta_testigos_pct = $metaPct;
 
             $mesasQuery = DB::table('eleccion_mesas as em')
                 ->join('eleccion_puestos as ep', 'ep.id', '=', 'em.eleccion_puesto_id')
@@ -43,7 +46,36 @@ class TerritorioTokensController extends Controller
             }
             $t->mesas_total = (int) $mesasQuery->count();
 
-            $t->referidos_total = (int) Referido::where('territorio_token_id', $t->id)->count();
+            $puestos = DB::table('eleccion_puestos as ep')
+                ->where('ep.eleccion_id', $t->eleccion_id)
+                ->where('ep.dd', $t->dd)
+                ->where('ep.mm', $t->mm)
+                ->when(!empty($t->comuna), function ($q) use ($t) {
+                    $q->where('ep.comuna', $t->comuna);
+                })
+                ->pluck('ep.id');
+
+            $metaObjetivo = 0;
+            if ($puestos->isNotEmpty()) {
+                $mesasByPuesto = DB::table('eleccion_mesas')
+                    ->selectRaw('eleccion_puesto_id, COUNT(*) as total_mesas')
+                    ->where('eleccion_id', $t->eleccion_id)
+                    ->whereIn('eleccion_puesto_id', $puestos->all())
+                    ->groupBy('eleccion_puesto_id')
+                    ->get();
+
+                foreach ($mesasByPuesto as $row) {
+                    $metaObjetivo += (int) floor(((int) $row->total_mesas) * ($metaPct / 100));
+                }
+            }
+            $t->meta_objetivo = $metaObjetivo;
+
+            $t->ocupados_total = (int) Referido::query()
+                ->where('territorio_token_id', $t->id)
+                ->where('estado', '<>', 'rechazado')
+                ->count();
+            $t->referidos_total = $t->ocupados_total;
+            $t->faltan_total = max($metaObjetivo - $t->ocupados_total, 0);
             return $t;
         });
 

@@ -55,6 +55,12 @@
                             </select>
                         </div>
                     </div>
+                    <div class="col-sm-2">
+                        <div class="form-group">
+                            <label for="meta_testigos_pct">Meta % testigos</label>
+                            <input type="number" name="meta_testigos_pct" id="meta_testigos_pct" class="form-control" min="0" max="100" placeholder="100">
+                        </div>
+                    </div>
                 </div>
 
                 <div class="row">
@@ -110,6 +116,7 @@
                         <th>Tipo</th>
                         <th>Fecha</th>
                         <th>Estado</th>
+                        <th>Meta %</th>
                         <th>Alcance</th>
                         <th>Importar DIVIPOL</th>
                         <th>Editar</th>
@@ -123,6 +130,7 @@
                             <td>{{ $e->tipo }}</td>
                             <td>{{ $e->fecha }}</td>
                             <td>{{ $e->estado }}</td>
+                            <td>{{ $e->meta_testigos_pct ?? 100 }}%</td>
                             <td>
                                 {{ $e->alcance_tipo ?? 'sin' }}
                                 @if($e->alcance_dd)
@@ -160,6 +168,9 @@
                                             <option value="cerrada" {{ $e->estado === 'cerrada' ? 'selected' : '' }}>cerrada</option>
                                             <option value="planificada" {{ $e->estado === 'planificada' ? 'selected' : '' }}>planificada</option>
                                         </select>
+                                    </div>
+                                    <div class="mb-2">
+                                        <input type="number" name="meta_testigos_pct" class="form-control form-control-sm" min="0" max="100" value="{{ $e->meta_testigos_pct }}" placeholder="100">
                                     </div>
                                     <div class="mb-2">
                                         <select name="alcance_tipo" class="form-control form-control-sm">

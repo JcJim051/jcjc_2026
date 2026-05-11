@@ -22,6 +22,7 @@ class EleccionesController extends Controller
             'tipo' => 'required|string|max:100',
             'fecha' => 'nullable|date',
             'estado' => 'required|string|max:50',
+            'meta_testigos_pct' => 'nullable|integer|min:0|max:100',
             'alcance_tipo' => 'nullable|string|max:50',
             'alcance_dd' => 'nullable|string|max:2',
             'alcance_mm' => 'nullable|string|max:255',
@@ -38,6 +39,7 @@ class EleccionesController extends Controller
             'alcance_tipo' => $data['alcance_tipo'] ?? null,
             'alcance_dd' => $alcanceDd,
             'alcance_mm' => $alcanceMm,
+            'meta_testigos_pct' => $data['meta_testigos_pct'] ?? null,
         ]);
 
         if ($request->hasFile('divipol')) {
@@ -75,6 +77,7 @@ class EleccionesController extends Controller
             'tipo' => 'required|string|max:100',
             'fecha' => 'nullable|date',
             'estado' => 'required|string|max:50',
+            'meta_testigos_pct' => 'nullable|integer|min:0|max:100',
             'alcance_tipo' => 'nullable|string|max:50',
             'alcance_dd' => 'nullable|string|max:2',
             'alcance_mm' => 'nullable|string|max:255',
@@ -90,6 +93,7 @@ class EleccionesController extends Controller
             'alcance_tipo' => $data['alcance_tipo'] ?? null,
             'alcance_dd' => $alcanceDd,
             'alcance_mm' => $alcanceMm,
+            'meta_testigos_pct' => $data['meta_testigos_pct'] ?? null,
         ]);
 
         return redirect()->route('admin.elecciones.index')

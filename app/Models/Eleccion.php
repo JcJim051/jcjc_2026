@@ -19,5 +19,10 @@ class Eleccion extends Model
         'alcance_tipo',
         'alcance_dd',
         'alcance_mm',
+        'meta_testigos_pct',
+    ];
+
+    protected $casts = [
+        'meta_testigos_pct' => 'integer',
     ];
 }

@@ -80,7 +80,10 @@
                         <th>Municipio</th>
                         <th>Comuna</th>
                         <th>Mesas</th>
-                        <th>Referidos</th>
+                        <th>Meta %</th>
+                        <th>Meta objetivo</th>
+                        <th>Ocupados</th>
+                        <th>Faltan</th>
                         <th>Token</th>
                         <th>Activo</th>
                         <th>Accion</th>
@@ -97,7 +100,10 @@
                             </td>
                             <td>{{ $t->comuna }}</td>
                             <td><span class="badge badge-info">{{ $t->mesas_total ?? 0 }}</span></td>
-                            <td><span class="badge badge-success">{{ $t->referidos_total ?? 0 }}</span></td>
+                            <td><span class="badge badge-dark">{{ $t->meta_testigos_pct ?? 100 }}%</span></td>
+                            <td><span class="badge badge-primary">{{ $t->meta_objetivo ?? 0 }}</span></td>
+                            <td><span class="badge badge-success">{{ $t->ocupados_total ?? 0 }}</span></td>
+                            <td><span class="badge badge-warning">{{ $t->faltan_total ?? 0 }}</span></td>
                             <td>
                                 <small>{{ $t->token }}</small><br>
                                 <small>
