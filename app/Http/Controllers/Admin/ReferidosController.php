@@ -252,6 +252,55 @@ class ReferidosController extends Controller
             ->with('success', 'Referido asignado correctamente.');
     }
 
+    public function asignarPostulado(Referido $referido)
+    {
+        if ($referido->estado !== 'referido') {
+            return redirect()->route('admin.referidos.index')
+                ->with('error', 'Solo se pueden asignar referidos en estado "referido".');
+        }
+
+        if (empty($referido->eleccion_puesto_id) || empty($referido->mesa_num)) {
+            return redirect()->route('admin.referidos.index')
+                ->with('error', 'Este referido no tiene puesto o mesa postulados para asignar desde el listado.');
+        }
+
+        $puesto = EleccionPuesto::query()
+            ->where('id', (int) $referido->eleccion_puesto_id)
+            ->where('eleccion_id', $referido->eleccion_id)
+            ->first();
+        if (!$puesto) {
+            return redirect()->route('admin.referidos.index')
+                ->with('error', 'El puesto postulado no es valido para esta eleccion.');
+        }
+
+        $personaReferido = DB::table('personas')->where('id', $referido->persona_id)->first();
+        $mesaKey = $this->buildMesaKey($referido->eleccion_id, $puesto, (int) $referido->mesa_num);
+        $eleccionMesa = EleccionMesa::where('mesa_key', $mesaKey)->first();
+        if (!$eleccionMesa) {
+            return redirect()->route('admin.referidos.index')
+                ->with('error', 'La mesa postulada no existe en DIVIPOL para esta eleccion.');
+        }
+
+        $ocupacion = $this->findMesaOcupacion(
+            $referido->eleccion_id,
+            $eleccionMesa->id,
+            $referido->persona_id,
+            $personaReferido->cedula ?? null
+        );
+        if ($ocupacion) {
+            return redirect()->route('admin.referidos.index')
+                ->with('directo_mesa_ocupada', 'La mesa postulada ya esta ocupada por ' . $this->formatOcupacionPersona($ocupacion) . '.')
+                ->with('directo_referido_id', $referido->id);
+        }
+
+        $request = new Request([
+            'puesto_id' => (int) $referido->eleccion_puesto_id,
+            'mesa_num' => (int) $referido->mesa_num,
+        ]);
+
+        return $this->asignar($request, $referido);
+    }
+
     public function liberar(Referido $referido)
     {
         if ($referido->estado !== 'asignado') {

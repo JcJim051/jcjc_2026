@@ -61,6 +61,14 @@
                             <td>{{ $r->estado }}</td>
                             <td>
                                 @if ($r->estado === 'referido')
+                                    @if (!empty($r->mesa_num) && !empty($r->puesto))
+                                        <form action="{{ route('admin.referidos.asignar_postulado', $r->id) }}" method="POST" style="display:inline;">
+                                            @csrf
+                                            <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Asignar este referido directamente al puesto y mesa postulados?')">
+                                                Directo
+                                            </button>
+                                        </form>
+                                    @endif
                                     <a class="btn btn-sm btn-primary" href="{{ route('admin.referidos.asignar.form', $r->id) }}">Asignar</a>
                                 @elseif ($r->estado === 'asignado')
                                     <form action="{{ route('admin.referidos.liberar', $r->id) }}" method="POST" style="display:inline;">
@@ -83,6 +91,30 @@
             </table>
         </div>
     </div>
+
+    @if (session('directo_mesa_ocupada') && session('directo_referido_id'))
+        <div class="modal fade" id="modalDirectoOcupado" tabindex="-1" role="dialog" aria-labelledby="modalDirectoOcupadoLabel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header bg-warning">
+                        <h5 class="modal-title" id="modalDirectoOcupadoLabel">Asignación directa no disponible</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        {{ session('directo_mesa_ocupada') }}
+                        <br><br>
+                        Debes realizar la asignación manual.
+                    </div>
+                    <div class="modal-footer">
+                        <a href="{{ route('admin.referidos.asignar.form', session('directo_referido_id')) }}" class="btn btn-primary">Asignar manual</a>
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
 @stop
 
 @section('css')
@@ -103,6 +135,10 @@
                 search: "Buscar:"
             }
         });
+
+        @if (session('directo_mesa_ocupada') && session('directo_referido_id'))
+            $('#modalDirectoOcupado').modal('show');
+        @endif
     });
 </script>
 @endsection

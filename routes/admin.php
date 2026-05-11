@@ -122,6 +122,7 @@ Route::delete('territorio-tokens/{token}', [TerritorioTokensController::class, '
 Route::get('referidos', [ReferidosController::class, 'index'])->name('admin.referidos.index');
 Route::get('referidos/{referido}/asignar', [ReferidosController::class, 'asignarForm'])->name('admin.referidos.asignar.form');
 Route::post('referidos/{referido}/asignar', [ReferidosController::class, 'asignar'])->name('admin.referidos.asignar');
+Route::post('referidos/{referido}/asignar-postulado', [ReferidosController::class, 'asignarPostulado'])->name('admin.referidos.asignar_postulado');
 Route::get('referidos/{referido}/mesas-disponibles', [ReferidosController::class, 'mesasDisponibles'])->name('admin.referidos.mesas_disponibles');
 Route::post('referidos/{referido}/liberar', [ReferidosController::class, 'liberar'])->name('admin.referidos.liberar');
 
