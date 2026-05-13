@@ -253,7 +253,7 @@ class PublicReferidosController extends Controller
             })
             ->selectRaw('
                 eleccion_puesto_id,
-                COUNT(*) as total_referidos,
+                SUM(CASE WHEN estado <> "rechazado" THEN 1 ELSE 0 END) as total_referidos,
                 SUM(CASE WHEN estado = "referido" THEN 1 ELSE 0 END) as c_referido,
                 SUM(CASE WHEN estado = "asignado" THEN 1 ELSE 0 END) as c_asignado,
                 SUM(CASE WHEN estado = "validado" THEN 1 ELSE 0 END) as c_validado,

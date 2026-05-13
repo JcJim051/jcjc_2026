@@ -394,6 +394,69 @@ class ReferidosController extends Controller
             ->with('success', 'Mesa liberada. El referido vuelve a estado "referido".');
     }
 
+    public function rechazar(Referido $referido)
+    {
+        if ($referido->estado === 'rechazado') {
+            return redirect()->route('admin.referidos.index')
+                ->with('success', 'El referido ya estaba rechazado.');
+        }
+
+        DB::beginTransaction();
+        try {
+            if ($referido->estado === 'asignado') {
+                $asignacionesActivas = DB::table('asignaciones as a')
+                    ->join('testigos as t', 't.id', '=', 'a.testigo_id')
+                    ->where('t.persona_id', $referido->persona_id)
+                    ->where('a.eleccion_id', $referido->eleccion_id)
+                    ->where('a.estado', 'activo')
+                    ->where('a.rol', 'testigo_mesa')
+                    ->select('a.id')
+                    ->lockForUpdate()
+                    ->get()
+                    ->pluck('id')
+                    ->all();
+
+                if (!empty($asignacionesActivas)) {
+                    DB::table('asignaciones')
+                        ->whereIn('id', $asignacionesActivas)
+                        ->update([
+                            'estado' => 'inactivo',
+                            'updated_at' => now(),
+                        ]);
+                }
+            }
+
+            $estadoAnterior = (string) $referido->estado;
+            $referido->estado = 'rechazado';
+            $this->appendReferidoAudit($referido, 'Cambio de estado: ' . $estadoAnterior . ' -> rechazado.');
+            $referido->save();
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return redirect()->route('admin.referidos.index')
+                ->with('error', 'No se pudo rechazar el referido: ' . $e->getMessage());
+        }
+
+        return redirect()->route('admin.referidos.index')
+            ->with('success', 'Referido rechazado correctamente.');
+    }
+
+    public function reactivar(Referido $referido)
+    {
+        if ($referido->estado !== 'rechazado') {
+            return redirect()->route('admin.referidos.index')
+                ->with('error', 'Solo se pueden reactivar referidos rechazados.');
+        }
+
+        $referido->estado = 'referido';
+        $this->appendReferidoAudit($referido, 'Cambio de estado: rechazado -> referido (reactivado).');
+        $referido->save();
+
+        return redirect()->route('admin.referidos.index')
+            ->with('success', 'Referido reactivado correctamente.');
+    }
+
     public function exportMeta(Request $request)
     {
         $data = $request->validate([

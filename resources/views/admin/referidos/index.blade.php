@@ -81,6 +81,12 @@
                                         </form>
                                     @endif
                                     <a class="btn btn-sm btn-primary" href="{{ route('admin.referidos.asignar.form', $r->id) }}">Asignar</a>
+                                    <form action="{{ route('admin.referidos.rechazar', $r->id) }}" method="POST" style="display:inline;">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Rechazar este referido?')">
+                                            Rechazar
+                                        </button>
+                                    </form>
                                 @elseif ($r->estado === 'asignado')
                                     <form action="{{ route('admin.referidos.liberar', $r->id) }}" method="POST" style="display:inline;">
                                         @csrf
@@ -90,8 +96,27 @@
                                             Liberar mesa
                                         </button>
                                     </form>
+                                    <form action="{{ route('admin.referidos.rechazar', $r->id) }}" method="POST" style="display:inline;">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Rechazar este referido? Esto también liberará su asignación activa.')">
+                                            Rechazar
+                                        </button>
+                                    </form>
                                 @elseif ($r->estado === 'validado')
                                     <a class="btn btn-sm btn-success" href="{{ route('admin.validacion_ani.edit', $r->id) }}">Ver</a>
+                                    <form action="{{ route('admin.referidos.rechazar', $r->id) }}" method="POST" style="display:inline;">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Rechazar este referido validado?')">
+                                            Rechazar
+                                        </button>
+                                    </form>
+                                @elseif ($r->estado === 'rechazado')
+                                    <form action="{{ route('admin.referidos.reactivar', $r->id) }}" method="POST" style="display:inline;">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-secondary" onclick="return confirm('¿Reactivar este referido para volver al flujo?')">
+                                            Reactivar
+                                        </button>
+                                    </form>
                                 @else
                                     <span class="text-muted">-</span>
                                 @endif

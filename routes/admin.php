@@ -125,6 +125,8 @@ Route::get('referidos/{referido}/asignar', [ReferidosController::class, 'asignar
 Route::post('referidos/{referido}/asignar', [ReferidosController::class, 'asignar'])->name('admin.referidos.asignar');
 Route::post('referidos/{referido}/asignar-postulado', [ReferidosController::class, 'asignarPostulado'])->name('admin.referidos.asignar_postulado');
 Route::post('referidos/asignar-postulados-masivo', [ReferidosController::class, 'asignarPostuladosMasivo'])->name('admin.referidos.asignar_postulados_masivo');
+Route::post('referidos/{referido}/rechazar', [ReferidosController::class, 'rechazar'])->name('admin.referidos.rechazar');
+Route::post('referidos/{referido}/reactivar', [ReferidosController::class, 'reactivar'])->name('admin.referidos.reactivar');
 Route::get('referidos/{referido}/mesas-disponibles', [ReferidosController::class, 'mesasDisponibles'])->name('admin.referidos.mesas_disponibles');
 Route::post('referidos/{referido}/liberar', [ReferidosController::class, 'liberar'])->name('admin.referidos.liberar');
 Route::post('referidos/export-meta', [ReferidosController::class, 'exportMeta'])->name('admin.referidos.export_meta');
