@@ -21,6 +21,17 @@
 
     <div class="card">
         <div class="card-body">
+            <div class="mb-3 text-right">
+                <form action="{{ route('admin.referidos.asignar_postulados_masivo') }}" method="POST" style="display:inline;">
+                    @csrf
+                    <button type="submit" class="btn btn-primary" onclick="return confirm('¿Asignar masivamente todos los referidos no asignados usando su puesto y mesa postulados?')">
+                        Asignar masivo
+                    </button>
+                </form>
+                <button type="button" class="btn btn-success" data-toggle="modal" data-target="#modalExportMeta">
+                    Exportar META
+                </button>
+            </div>
             <table id="example"
                 class="table display nowrap table-bordered"
                 style="width:100%; font-size:10px">
@@ -115,6 +126,35 @@
             </div>
         </div>
     @endif
+
+    <div class="modal fade" id="modalExportMeta" tabindex="-1" role="dialog" aria-labelledby="modalExportMetaLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header bg-info">
+                    <h5 class="modal-title" id="modalExportMetaLabel">Exportar Plantilla META</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    ¿Qué grupo quieres exportar?
+                </div>
+                <div class="modal-footer">
+                    <form action="{{ route('admin.referidos.export_meta') }}" method="POST" style="display:inline;">
+                        @csrf
+                        <input type="hidden" name="tipo" value="asignados">
+                        <button type="submit" class="btn btn-primary">Asignados</button>
+                    </form>
+                    <form action="{{ route('admin.referidos.export_meta') }}" method="POST" style="display:inline;">
+                        @csrf
+                        <input type="hidden" name="tipo" value="validados">
+                        <button type="submit" class="btn btn-success">Validados</button>
+                    </form>
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @stop
 
 @section('css')

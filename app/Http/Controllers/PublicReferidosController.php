@@ -18,6 +18,9 @@ class PublicReferidosController extends Controller
     public function form(string $token)
     {
         $tokenRow = $this->getTokenOrFail($token, false);
+        if ($tokenRow->es_consulta) {
+            return redirect()->route('public.referidos.seguimiento', $tokenRow->token);
+        }
         if (!$tokenRow->activo || ($tokenRow->expires_at && $tokenRow->expires_at->isPast())) {
             return view('public.referidos.cerrado', ['token' => $tokenRow]);
         }
@@ -46,6 +49,10 @@ class PublicReferidosController extends Controller
     public function store(Request $request, string $token)
     {
         $tokenRow = $this->getTokenOrFail($token, false);
+        if ($tokenRow->es_consulta) {
+            return redirect()->route('public.referidos.seguimiento', $tokenRow->token)
+                ->with('error', 'Este token es solo de consulta.');
+        }
         if (!$tokenRow->activo || ($tokenRow->expires_at && $tokenRow->expires_at->isPast())) {
             return redirect()->route('public.referidos.seguimiento', $tokenRow->token)
                 ->with('error', 'Formulario cerrado. Solo seguimiento disponible.');
@@ -143,18 +150,39 @@ class PublicReferidosController extends Controller
     {
         $tokenRow = $this->getTokenOrFail($token, false);
         $metaPct = $this->getMetaPctByEleccion((int) $tokenRow->eleccion_id);
+        $municipiosConsulta = collect($tokenRow->municipios ?? [])->filter()->values();
 
-        $municipio = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
-            ->where('dd', $tokenRow->dd)
-            ->where('mm', $tokenRow->mm)
-            ->select('municipio')
-            ->distinct()
-            ->first();
+        $municipio = null;
+        if (!$tokenRow->es_consulta) {
+            $municipio = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
+                ->where('dd', $tokenRow->dd)
+                ->where('mm', $tokenRow->mm)
+                ->select('municipio')
+                ->distinct()
+                ->first();
+        }
 
         $referidos = DB::table('referidos as r')
             ->join('personas as p', 'p.id', '=', 'r.persona_id')
             ->join('eleccion_puestos as ep', 'ep.id', '=', 'r.eleccion_puesto_id')
-            ->where('r.territorio_token_id', $tokenRow->id)
+            ->where(function ($q) use ($tokenRow, $municipiosConsulta) {
+                if ($tokenRow->es_consulta) {
+                    $q->where('r.eleccion_id', $tokenRow->eleccion_id)
+                        ->where(function ($geo) use ($municipiosConsulta) {
+                            foreach ($municipiosConsulta as $geoCode) {
+                                if (strpos((string) $geoCode, '-') === false) {
+                                    continue;
+                                }
+                                [$dd, $mm] = explode('-', (string) $geoCode);
+                                $geo->orWhere(function ($g) use ($dd, $mm) {
+                                    $g->where('ep.dd', $dd)->where('ep.mm', $mm);
+                                });
+                            }
+                        });
+                } else {
+                    $q->where('r.territorio_token_id', $tokenRow->id);
+                }
+            })
             ->orderByDesc('r.id')
             ->select([
                 'r.id',
@@ -173,8 +201,21 @@ class PublicReferidosController extends Controller
 
         $puestosAlcance = EleccionPuesto::query()
             ->where('eleccion_id', $tokenRow->eleccion_id)
-            ->where('dd', $tokenRow->dd)
-            ->where('mm', $tokenRow->mm)
+            ->where(function ($q) use ($tokenRow, $municipiosConsulta) {
+                if ($tokenRow->es_consulta) {
+                    foreach ($municipiosConsulta as $geoCode) {
+                        if (strpos((string) $geoCode, '-') === false) {
+                            continue;
+                        }
+                        [$dd, $mm] = explode('-', (string) $geoCode);
+                        $q->orWhere(function ($g) use ($dd, $mm) {
+                            $g->where('dd', $dd)->where('mm', $mm);
+                        });
+                    }
+                } else {
+                    $q->where('dd', $tokenRow->dd)->where('mm', $tokenRow->mm);
+                }
+            })
             ->when(!empty($tokenRow->comuna), function ($q) use ($tokenRow) {
                 $q->where('comuna', $tokenRow->comuna);
             })
@@ -188,7 +229,28 @@ class PublicReferidosController extends Controller
             ]);
 
         $referidosAggPorPuesto = DB::table('referidos')
-            ->where('territorio_token_id', $tokenRow->id)
+            ->where(function ($q) use ($tokenRow, $municipiosConsulta) {
+                if ($tokenRow->es_consulta) {
+                    $q->where('eleccion_id', $tokenRow->eleccion_id)
+                        ->whereIn('eleccion_puesto_id', EleccionPuesto::query()
+                            ->where('eleccion_id', $tokenRow->eleccion_id)
+                            ->where(function ($geoQ) use ($municipiosConsulta) {
+                                foreach ($municipiosConsulta as $geoCode) {
+                                    if (strpos((string) $geoCode, '-') === false) {
+                                        continue;
+                                    }
+                                    [$dd, $mm] = explode('-', (string) $geoCode);
+                                    $geoQ->orWhere(function ($g) use ($dd, $mm) {
+                                        $g->where('dd', $dd)->where('mm', $mm);
+                                    });
+                                }
+                            })
+                            ->pluck('id')
+                            ->all());
+                } else {
+                    $q->where('territorio_token_id', $tokenRow->id);
+                }
+            })
             ->selectRaw('
                 eleccion_puesto_id,
                 COUNT(*) as total_referidos,
@@ -232,7 +294,7 @@ class PublicReferidosController extends Controller
         return view('public.referidos.seguimiento', [
             'token' => $tokenRow,
             'meta_pct' => $metaPct,
-            'municipio' => $municipio?->municipio,
+            'municipio' => $tokenRow->es_consulta ? 'Múltiples municipios' : ($municipio?->municipio),
             'referidos' => $referidos,
             'puestos_alcance' => $puestosAlcance,
         ]);
@@ -241,6 +303,9 @@ class PublicReferidosController extends Controller
     public function edit(string $token, int $referidoId)
     {
         $tokenRow = $this->getTokenOrFail($token, false);
+        if ($tokenRow->es_consulta) {
+            abort(403);
+        }
 
         $referido = DB::table('referidos as r')
             ->join('personas as p', 'p.id', '=', 'r.persona_id')
@@ -304,6 +369,10 @@ class PublicReferidosController extends Controller
     public function update(Request $request, string $token, int $referidoId)
     {
         $tokenRow = $this->getTokenOrFail($token, false);
+        if ($tokenRow->es_consulta) {
+            return redirect()->route('public.referidos.seguimiento', $tokenRow->token)
+                ->with('error', 'Este token es solo de consulta.');
+        }
 
         $referido = Referido::query()
             ->where('id', $referidoId)
@@ -406,6 +475,9 @@ class PublicReferidosController extends Controller
     public function mesasDisponibles(Request $request, string $token)
     {
         $tokenRow = $this->getTokenOrFail($token, false);
+        if ($tokenRow->es_consulta) {
+            return response()->json(['results' => []]);
+        }
 
         $data = $request->validate([
             'puesto_id' => ['required', 'integer', 'exists:eleccion_puestos,id'],
@@ -450,6 +522,9 @@ class PublicReferidosController extends Controller
     public function departamentos(Request $request, string $token)
     {
         $tokenRow = $this->getTokenOrFail($token, true);
+        if ($tokenRow->es_consulta) {
+            return response()->json(['results' => []]);
+        }
         $search = trim((string) $request->get('q', ''));
 
         $query = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
@@ -474,6 +549,9 @@ class PublicReferidosController extends Controller
     public function municipios(Request $request, string $token)
     {
         $tokenRow = $this->getTokenOrFail($token, true);
+        if ($tokenRow->es_consulta) {
+            return response()->json(['results' => []]);
+        }
         $search = trim((string) $request->get('q', ''));
 
         $query = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
@@ -499,6 +577,9 @@ class PublicReferidosController extends Controller
     public function puestos(Request $request, string $token)
     {
         $tokenRow = $this->getTokenOrFail($token, true);
+        if ($tokenRow->es_consulta) {
+            return response()->json(['results' => []]);
+        }
 
         $query = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
             ->where('dd', $tokenRow->dd)

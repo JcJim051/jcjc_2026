@@ -14,6 +14,8 @@ class TerritorioToken extends Model
     protected $casts = [
         'activo' => 'boolean',
         'expires_at' => 'datetime',
+        'es_consulta' => 'boolean',
+        'municipios' => 'array',
     ];
 
     protected $fillable = [
@@ -21,6 +23,8 @@ class TerritorioToken extends Model
         'dd',
         'mm',
         'comuna',
+        'es_consulta',
+        'municipios',
         'token',
         'responsable',
         'activo',

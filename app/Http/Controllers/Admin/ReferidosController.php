@@ -11,9 +11,14 @@ use App\Models\EleccionPuesto;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Traits\EleccionScope;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class ReferidosController extends Controller
 {
+    use EleccionScope;
+
     public function index()
     {
         $referidos = DB::table('referidos as r')
@@ -301,6 +306,36 @@ class ReferidosController extends Controller
         return $this->asignar($request, $referido);
     }
 
+    public function asignarPostuladosMasivo()
+    {
+        $referidos = Referido::query()
+            ->where('estado', 'referido')
+            ->whereNotNull('eleccion_puesto_id')
+            ->whereNotNull('mesa_num')
+            ->orderBy('id')
+            ->get();
+
+        $ok = 0;
+        $fail = 0;
+
+        foreach ($referidos as $referido) {
+            $this->asignar(new Request([
+                'puesto_id' => (int) $referido->eleccion_puesto_id,
+                'mesa_num' => (int) $referido->mesa_num,
+            ]), $referido);
+
+            $referido->refresh();
+            if ($referido->estado === 'asignado') {
+                $ok++;
+            } else {
+                $fail++;
+            }
+        }
+
+        return redirect()->route('admin.referidos.index')
+            ->with('success', "Asignación masiva completada. OK: {$ok}. Fallidos: {$fail}.");
+    }
+
     public function liberar(Referido $referido)
     {
         if ($referido->estado !== 'asignado') {
@@ -357,6 +392,103 @@ class ReferidosController extends Controller
 
         return redirect()->route('admin.referidos.index')
             ->with('success', 'Mesa liberada. El referido vuelve a estado "referido".');
+    }
+
+    public function exportMeta(Request $request)
+    {
+        $data = $request->validate([
+            'tipo' => 'required|in:asignados,validados',
+        ]);
+
+        $estadoObjetivo = $data['tipo'] === 'validados' ? 'validado' : 'asignado';
+        $eleccionId = $this->resolveEleccionId();
+
+        $rows = DB::table('referidos as r')
+            ->join('personas as p', 'p.id', '=', 'r.persona_id')
+            ->join('eleccion_puestos as ep', 'ep.id', '=', 'r.eleccion_puesto_id')
+            ->where('r.estado', $estadoObjetivo)
+            ->whereNotNull('r.mesa_num')
+            ->when($eleccionId, function ($q) use ($eleccionId) {
+                $q->where('r.eleccion_id', $eleccionId);
+            })
+            ->orderBy('ep.dd')
+            ->orderBy('ep.mm')
+            ->orderBy('ep.zz')
+            ->orderBy('ep.pp')
+            ->orderBy('r.mesa_num')
+            ->get([
+                'ep.dd',
+                'ep.departamento',
+                'ep.mm',
+                'ep.municipio',
+                'ep.zz',
+                'ep.pp',
+                'ep.puesto',
+                'r.mesa_num',
+                'p.cedula',
+                'p.nombre',
+                'p.telefono',
+                'p.email',
+            ]);
+
+        $payload = [];
+        foreach ($rows as $r) {
+            [$n1, $n2, $a1, $a2] = $this->splitNombreMeta((string) $r->nombre);
+            $payload[] = [
+                'Cod Depto' => $this->toIntOrValue($r->dd),
+                'Nom Departamento' => (string) ($r->departamento ?? ''),
+                'Cod Mpio' => $this->toIntOrValue($r->mm),
+                'Nom Municipio' => (string) ($r->municipio ?? ''),
+                'Cod Zona' => $this->toIntOrValue($r->zz),
+                'Cod Puesto' => str_pad((string) $r->pp, 2, '0', STR_PAD_LEFT),
+                'Nombre Puesto' => (string) ($r->puesto ?? ''),
+                'Mesa' => (int) $r->mesa_num,
+                'Cedula' => (string) ($r->cedula ?? ''),
+                'Nombre 1' => $n1,
+                'Nombre 2' => $n2,
+                'Apellido 1' => $a1,
+                'Apellido 2' => $a2,
+                'Celular' => (string) ($r->telefono ?? ''),
+                'Correo' => (string) ($r->email ?? ''),
+                'Nivel Educativo' => '',
+            ];
+        }
+
+        $tipoLabel = $data['tipo'] === 'validados' ? 'validados' : 'asignados';
+        $fileName = 'testigos_meta_' . $tipoLabel . '_' . now()->format('Ymd_His') . '.xlsx';
+
+        $headings = [
+            'Cod Depto',
+            'Nom Departamento',
+            'Cod Mpio',
+            'Nom Municipio',
+            'Cod Zona',
+            'Cod Puesto',
+            'Nombre Puesto',
+            'Mesa',
+            'Cedula',
+            'Nombre 1',
+            'Nombre 2',
+            'Apellido 1',
+            'Apellido 2',
+            'Celular',
+            'Correo',
+            'Nivel Educativo',
+        ];
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->fromArray($headings, null, 'A1');
+        if (!empty($payload)) {
+            $sheet->fromArray($payload, null, 'A2');
+        }
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     private function buildMesaKey(int $eleccionId, EleccionPuesto $puesto, int $mesaNum): string
@@ -458,5 +590,43 @@ class ReferidosController extends Controller
             ->values();
 
         return [$mesasDisponibles, $mesasOcupadasDetalle];
+    }
+
+    private function splitNombreMeta(string $nombre): array
+    {
+        $nombre = trim(preg_replace('/\s+/', ' ', $nombre));
+        if ($nombre === '') {
+            return ['', '', '', ''];
+        }
+        $parts = explode(' ', $nombre);
+        $count = count($parts);
+
+        if ($count === 1) {
+            return [$parts[0], '', '', ''];
+        }
+        if ($count === 2) {
+            return [$parts[0], '', $parts[1], ''];
+        }
+        if ($count === 3) {
+            return [$parts[0], $parts[1], $parts[2], ''];
+        }
+
+        return [
+            $parts[0] ?? '',
+            $parts[1] ?? '',
+            $parts[2] ?? '',
+            implode(' ', array_slice($parts, 3)),
+        ];
+    }
+
+    private function toIntOrValue($value)
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+        return (string) $value;
     }
 }

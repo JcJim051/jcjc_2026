@@ -117,16 +117,20 @@ Route::post('territorio-tokens', [TerritorioTokensController::class, 'store'])->
 Route::get('territorio-tokens/municipios', [TerritorioTokensController::class, 'municipios'])->name('admin.territorio_tokens.municipios');
 Route::get('territorio-tokens/comunas', [TerritorioTokensController::class, 'comunas'])->name('admin.territorio_tokens.comunas');
 Route::post('territorio-tokens/{token}/toggle', [TerritorioTokensController::class, 'toggle'])->name('admin.territorio_tokens.toggle');
+Route::put('territorio-tokens/{token}', [TerritorioTokensController::class, 'update'])->name('admin.territorio_tokens.update');
 Route::delete('territorio-tokens/{token}', [TerritorioTokensController::class, 'destroy'])->name('admin.territorio_tokens.destroy');
 
 Route::get('referidos', [ReferidosController::class, 'index'])->name('admin.referidos.index');
 Route::get('referidos/{referido}/asignar', [ReferidosController::class, 'asignarForm'])->name('admin.referidos.asignar.form');
 Route::post('referidos/{referido}/asignar', [ReferidosController::class, 'asignar'])->name('admin.referidos.asignar');
 Route::post('referidos/{referido}/asignar-postulado', [ReferidosController::class, 'asignarPostulado'])->name('admin.referidos.asignar_postulado');
+Route::post('referidos/asignar-postulados-masivo', [ReferidosController::class, 'asignarPostuladosMasivo'])->name('admin.referidos.asignar_postulados_masivo');
 Route::get('referidos/{referido}/mesas-disponibles', [ReferidosController::class, 'mesasDisponibles'])->name('admin.referidos.mesas_disponibles');
 Route::post('referidos/{referido}/liberar', [ReferidosController::class, 'liberar'])->name('admin.referidos.liberar');
+Route::post('referidos/export-meta', [ReferidosController::class, 'exportMeta'])->name('admin.referidos.export_meta');
 
 Route::get('validacion-ani', [ValidacionAniController::class, 'index'])->name('admin.validacion_ani.index');
+Route::post('validacion-ani/validar-masivo', [ValidacionAniController::class, 'validarMasivo'])->name('admin.validacion_ani.validar_masivo');
 Route::get('validacion-ani/{referido}/edit', [ValidacionAniController::class, 'edit'])->name('admin.validacion_ani.edit');
 Route::put('validacion-ani/{referido}', [ValidacionAniController::class, 'update'])->name('admin.validacion_ani.update');
 Route::get('validacion-ani-coordinador/{coordinacion}/edit', [ValidacionAniController::class, 'editCoordinador'])->name('admin.validacion_ani.coordinador.edit');

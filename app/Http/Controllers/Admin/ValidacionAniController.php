@@ -211,6 +211,48 @@ class ValidacionAniController extends Controller
             ->with('success', 'Validacion actualizada.');
     }
 
+    public function validarMasivo()
+    {
+        $eleccionId = $this->resolveEleccionId((int) request('eleccion_id'));
+
+        $referidos = Referido::query()
+            ->when($eleccionId, function ($q) use ($eleccionId) {
+                $q->where('eleccion_id', $eleccionId);
+            })
+            ->where('estado', 'asignado')
+            ->get();
+
+        $okReferidos = 0;
+        foreach ($referidos as $referido) {
+            $referido->estado = 'validado';
+            $this->appendAudit($referido, 'Validación masiva ANI: asignado -> validado');
+            $referido->save();
+            $okReferidos++;
+        }
+
+        $queryCoordinadores = AbogadoCoordinacion::query()
+            ->whereNull('released_at')
+            ->where(function ($q) {
+                $q->whereNull('validacion_estado')
+                  ->orWhere('validacion_estado', 'asignado');
+            });
+        if ($eleccionId) {
+            $queryCoordinadores->where('eleccion_id', $eleccionId);
+        }
+        $coordinadores = $queryCoordinadores->get();
+
+        $okCoords = 0;
+        foreach ($coordinadores as $coord) {
+            $coord->validacion_estado = 'validado';
+            $this->appendAuditCoordinacion($coord, 'Validación masiva ANI: asignado -> validado');
+            $coord->save();
+            $okCoords++;
+        }
+
+        return redirect()->route('admin.validacion_ani.index')
+            ->with('success', "Validación masiva completada. Referidos: {$okReferidos}. Coordinadores: {$okCoords}.");
+    }
+
     private function normalizeName(string $value): string
     {
         $value = mb_strtolower($value, 'UTF-8');

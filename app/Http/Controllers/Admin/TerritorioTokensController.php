@@ -27,6 +27,20 @@ class TerritorioTokensController extends Controller
                 return $r->eleccion_id . '|' . $r->dd . '|' . $r->mm;
             });
 
+        $referidosPorToken = Referido::query()
+            ->selectRaw('territorio_token_id, COUNT(*) as total')
+            ->groupBy('territorio_token_id')
+            ->pluck('total', 'territorio_token_id');
+
+        $referidosPorMunicipio = Referido::query()
+            ->join('territorio_tokens as tt', 'tt.id', '=', 'referidos.territorio_token_id')
+            ->selectRaw('tt.eleccion_id, tt.dd, tt.mm, COUNT(*) as total')
+            ->groupBy('tt.eleccion_id', 'tt.dd', 'tt.mm')
+            ->get()
+            ->keyBy(function ($r) {
+                return $r->eleccion_id . '|' . $r->dd . '|' . $r->mm;
+            });
+
         $tokens = $tokens->map(function ($t) use ($municipiosMap) {
             $key = $t->eleccion_id . '|' . $t->dd . '|' . $t->mm;
             $geo = $municipiosMap->get($key);
@@ -70,6 +84,11 @@ class TerritorioTokensController extends Controller
             }
             $t->meta_objetivo = $metaObjetivo;
 
+            $refMunicipioKey = $t->eleccion_id . '|' . $t->dd . '|' . $t->mm;
+            $t->referidos_token_total = (int) ($referidosPorToken[$t->id] ?? 0);
+            $t->referidos_municipio_total = (int) (($referidosPorMunicipio[$refMunicipioKey]->total ?? 0));
+            $t->referidos_token_municipio = $t->referidos_token_total . '/' . $t->referidos_municipio_total;
+
             $t->ocupados_total = (int) Referido::query()
                 ->where('territorio_token_id', $t->id)
                 ->where('estado', '<>', 'rechazado')
@@ -86,8 +105,33 @@ class TerritorioTokensController extends Controller
     {
         $eleccionId = (int) $request->get('eleccion_id');
         $search = trim((string) $request->get('q', ''));
+        $eleccion = Eleccion::find($eleccionId);
 
         $query = EleccionPuesto::where('eleccion_id', $eleccionId);
+
+        // Respetar alcance configurado en la eleccion seleccionada.
+        if ($eleccion) {
+            $alcanceDd = trim((string) ($eleccion->alcance_dd ?? ''));
+            $alcanceMm = trim((string) ($eleccion->alcance_mm ?? ''));
+
+            if ($alcanceDd !== '') {
+                $query->where('dd', str_pad($alcanceDd, 2, '0', STR_PAD_LEFT));
+            }
+
+            if ($alcanceMm !== '') {
+                $mmList = collect(explode(',', $alcanceMm))
+                    ->map(fn ($mm) => str_pad(trim((string) $mm), 3, '0', STR_PAD_LEFT))
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                if (!empty($mmList)) {
+                    $query->whereIn('mm', $mmList);
+                }
+            }
+        }
+
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('departamento', 'like', '%' . $search . '%')
@@ -150,13 +194,30 @@ class TerritorioTokensController extends Controller
     {
         $data = $request->validate([
             'eleccion_id' => 'required|integer|exists:elecciones,id',
-            'municipio_codigo' => 'required|string',
+            'token_mode' => 'nullable|in:referidos,consulta',
+            'municipio_codigo' => 'nullable|string',
+            'municipios_multi' => 'nullable|array',
+            'municipios_multi.*' => 'string',
             'comuna' => 'nullable|string|max:100',
             'responsable' => 'nullable|string|max:255',
             'expires_at' => 'nullable|date',
         ]);
 
-        [$dd, $mm] = explode('-', $data['municipio_codigo']);
+        $mode = $data['token_mode'] ?? 'referidos';
+        $municipiosMulti = collect($data['municipios_multi'] ?? [])->filter()->values();
+
+        if ($mode === 'consulta') {
+            if ($municipiosMulti->isEmpty()) {
+                return back()->withErrors(['municipios_multi' => 'Debes seleccionar al menos un municipio para token de consulta.'])->withInput();
+            }
+            $first = (string) $municipiosMulti->first();
+            [$dd, $mm] = explode('-', $first);
+        } else {
+            if (empty($data['municipio_codigo'])) {
+                return back()->withErrors(['municipio_codigo' => 'Debes seleccionar municipio.'])->withInput();
+            }
+            [$dd, $mm] = explode('-', $data['municipio_codigo']);
+        }
 
         $token = Str::random(32);
 
@@ -165,6 +226,8 @@ class TerritorioTokensController extends Controller
             'dd' => $dd,
             'mm' => $mm,
             'comuna' => $data['comuna'] ?? null,
+            'es_consulta' => $mode === 'consulta',
+            'municipios' => $mode === 'consulta' ? $municipiosMulti->all() : null,
             'token' => $token,
             'responsable' => $data['responsable'] ?? null,
             'activo' => true,
@@ -190,5 +253,44 @@ class TerritorioTokensController extends Controller
 
         return redirect()->route('admin.territorio_tokens.index')
             ->with('success', 'Token eliminado correctamente.');
+    }
+
+    public function update(Request $request, TerritorioToken $token)
+    {
+        $data = $request->validate([
+            'responsable' => 'nullable|string|max:255',
+            'comuna' => 'nullable|string|max:100',
+            'expires_at' => 'nullable|date',
+            'activo' => 'nullable|boolean',
+            'municipios_multi' => 'nullable|array',
+            'municipios_multi.*' => 'string',
+        ]);
+
+        if ($token->es_consulta) {
+            $municipios = collect($data['municipios_multi'] ?? [])->filter()->values();
+            if ($municipios->isEmpty()) {
+                return back()->withErrors(['municipios_multi' => 'Debes seleccionar al menos un municipio para token de consulta.'])->withInput();
+            }
+            $first = (string) $municipios->first();
+            if (strpos($first, '-') === false) {
+                return back()->withErrors(['municipios_multi' => 'Formato inválido de municipio.'])->withInput();
+            }
+            [$dd, $mm] = explode('-', $first);
+            $token->dd = $dd;
+            $token->mm = $mm;
+            $token->municipios = $municipios->all();
+            // En consulta multi-municipio no usamos comuna de filtro.
+            $token->comuna = null;
+        } else {
+            $token->comuna = $data['comuna'] ?? null;
+        }
+
+        $token->responsable = $data['responsable'] ?? null;
+        $token->expires_at = $data['expires_at'] ?? null;
+        $token->activo = (bool) ($data['activo'] ?? $token->activo);
+        $token->save();
+
+        return redirect()->route('admin.territorio_tokens.index')
+            ->with('success', 'Token actualizado correctamente.');
     }
 }
