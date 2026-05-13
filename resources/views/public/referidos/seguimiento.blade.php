@@ -101,11 +101,27 @@
                             <th>Registrados</th>
                             <th>Asignado</th>
                             <th>Validado</th>
+                            <th>Avance %</th>
                             <th>Faltan</th>
                         </tr>
                     </thead>
                     <tbody>
+                        @php
+                            $totalMeta = 0;
+                            $totalRegistrados = 0;
+                            $totalAsignado = 0;
+                            $totalValidado = 0;
+                            $totalFaltan = 0;
+                        @endphp
                         @forelse ($resumenMunicipios as $m)
+                            @php
+                                $avance = ((int) $m['meta'] > 0) ? round(((int) $m['registrados'] / (int) $m['meta']) * 100, 1) : 0;
+                                $totalMeta += (int) $m['meta'];
+                                $totalRegistrados += (int) $m['registrados'];
+                                $totalAsignado += (int) $m['asignado'];
+                                $totalValidado += (int) $m['validado'];
+                                $totalFaltan += (int) $m['faltan'];
+                            @endphp
                             <tr>
                                 <td><button type="button" class="btn btn-sm btn-outline-primary details-btn">Ver</button></td>
                                 <td>{{ $m['municipio'] }}</td>
@@ -113,12 +129,30 @@
                                 <td><strong>{{ $m['registrados'] }}</strong></td>
                                 <td>{{ $m['asignado'] }}</td>
                                 <td>{{ $m['validado'] }}</td>
+                                <td><strong>{{ $avance }}%</strong></td>
                                 <td><strong>{{ $m['faltan'] }}</strong></td>
                             </tr>
                         @empty
-                            <tr><td colspan="7" class="text-center text-muted">No hay puestos en el alcance actual.</td></tr>
+                            <tr><td colspan="8" class="text-center text-muted">No hay puestos en el alcance actual.</td></tr>
                         @endforelse
                     </tbody>
+                    @if (count($resumenMunicipios) > 0)
+                    @php
+                        $avanceTotal = $totalMeta > 0 ? round(($totalRegistrados / $totalMeta) * 100, 1) : 0;
+                    @endphp
+                    <tfoot>
+                        <tr style="background:#eef5ff; font-weight:700;">
+                            <td></td>
+                            <td>TOTAL</td>
+                            <td>{{ $totalMeta }}</td>
+                            <td>{{ $totalRegistrados }}</td>
+                            <td>{{ $totalAsignado }}</td>
+                            <td>{{ $totalValidado }}</td>
+                            <td>{{ $avanceTotal }}%</td>
+                            <td>{{ $totalFaltan }}</td>
+                        </tr>
+                    </tfoot>
+                    @endif
                 </table>
             </div>
 
@@ -207,7 +241,7 @@
             order: [[1, 'asc']],
             columnDefs: [
                 { orderable: false, targets: 0 },
-                { responsivePriority: 1, targets: [1, 2, 3] }
+                { responsivePriority: 1, targets: [1, 2, 3, 6] }
             ],
             language: {
                 search: 'Buscar:',
