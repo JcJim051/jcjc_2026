@@ -39,6 +39,7 @@ use App\Http\Controllers\Admin\ValidacionAniController;
 use App\Http\Controllers\Admin\CneImportController;
 use App\Http\Controllers\Admin\AbogadosController;
 use App\Http\Controllers\Admin\ReunionesAbogadosController;
+use App\Http\Controllers\Admin\BloqueosMesasController;
 
 Route::get('', [AdminController::class, '__invoke'])->name('admin.home');
 
@@ -119,6 +120,9 @@ Route::get('territorio-tokens/comunas', [TerritorioTokensController::class, 'com
 Route::post('territorio-tokens/{token}/toggle', [TerritorioTokensController::class, 'toggle'])->name('admin.territorio_tokens.toggle');
 Route::put('territorio-tokens/{token}', [TerritorioTokensController::class, 'update'])->name('admin.territorio_tokens.update');
 Route::delete('territorio-tokens/{token}', [TerritorioTokensController::class, 'destroy'])->name('admin.territorio_tokens.destroy');
+Route::get('bloqueos-mesas', [BloqueosMesasController::class, 'index'])->name('admin.bloqueos_mesas.index');
+Route::post('bloqueos-mesas/import', [BloqueosMesasController::class, 'import'])->name('admin.bloqueos_mesas.import');
+Route::delete('bloqueos-mesas/{bloqueo}', [BloqueosMesasController::class, 'destroy'])->name('admin.bloqueos_mesas.destroy');
 
 Route::get('referidos', [ReferidosController::class, 'index'])->name('admin.referidos.index');
 Route::get('referidos/{referido}/asignar', [ReferidosController::class, 'asignarForm'])->name('admin.referidos.asignar.form');

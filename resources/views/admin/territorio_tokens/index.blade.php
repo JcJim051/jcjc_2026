@@ -16,6 +16,9 @@
     <div class="card">
         <div class="card-header">
             <h3 class="card-title">Crear Token</h3>
+            <div class="card-tools">
+                <a href="{{ route('admin.bloqueos_mesas.index') }}" class="btn btn-sm btn-outline-primary">Ver bloqueos de mesas</a>
+            </div>
         </div>
         <div class="card-body">
             <form action="{{ route('admin.territorio_tokens.store') }}" method="POST">

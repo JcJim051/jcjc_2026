@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Eleccion;
 use App\Models\EleccionPuesto;
+use App\Models\MesaBloqueo;
 use App\Models\Persona;
 use App\Models\Referido;
 use App\Models\TerritorioToken;
@@ -91,6 +92,15 @@ class PublicReferidosController extends Controller
 
         if ((int) $data['mesa_num'] > (int) $puesto->mesas_total) {
             return back()->withErrors(['mesa_num' => 'La mesa excede el total permitido para este puesto.']);
+        }
+
+        $mesaBloqueada = MesaBloqueo::query()
+            ->where('eleccion_id', $tokenRow->eleccion_id)
+            ->where('eleccion_puesto_id', $puesto->id)
+            ->where('mesa_num', (int) $data['mesa_num'])
+            ->exists();
+        if ($mesaBloqueada) {
+            return back()->withErrors(['mesa_num' => 'La mesa seleccionada está bloqueada por asignación externa.'])->withInput();
         }
 
         $cupo = $this->getCupoMetrics((int) $tokenRow->eleccion_id, (int) $puesto->id);
@@ -415,6 +425,15 @@ class PublicReferidosController extends Controller
             return back()->withErrors(['mesa_num' => 'La mesa excede el total permitido para este puesto.'])->withInput();
         }
 
+        $mesaBloqueada = MesaBloqueo::query()
+            ->where('eleccion_id', $referido->eleccion_id)
+            ->where('eleccion_puesto_id', $puesto->id)
+            ->where('mesa_num', (int) $data['mesa_num'])
+            ->exists();
+        if ($mesaBloqueada) {
+            return back()->withErrors(['mesa_num' => 'La mesa seleccionada está bloqueada por asignación externa.'])->withInput();
+        }
+
         $cupo = $this->getCupoMetrics((int) $referido->eleccion_id, (int) $puesto->id, (int) $referido->id);
         if ((int) $cupo['espacios_40_libres'] <= 0) {
             return back()->withErrors(['puesto_id' => 'Este puesto ya alcanzo su meta de cobertura para esta eleccion.'])->withInput();
@@ -672,8 +691,16 @@ class PublicReferidosController extends Controller
             ->unique()
             ->all();
 
+        $bloqueadas = MesaBloqueo::query()
+            ->where('eleccion_id', $eleccionId)
+            ->where('eleccion_puesto_id', $puestoId)
+            ->pluck('mesa_num')
+            ->map(fn ($v) => (int) $v)
+            ->unique()
+            ->all();
+
         return collect(range(1, (int) $puesto->mesas_total))
-            ->reject(fn ($mesa) => in_array((int) $mesa, $ocupadas, true))
+            ->reject(fn ($mesa) => in_array((int) $mesa, $ocupadas, true) || in_array((int) $mesa, $bloqueadas, true))
             ->values();
     }
 
