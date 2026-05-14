@@ -86,7 +86,8 @@ class PublicReferidosController extends Controller
             return back()->withErrors(['puesto_id' => 'Puesto no permitido para este territorio.']);
         }
 
-        if ($tokenRow->comuna && $puesto->comuna !== $tokenRow->comuna) {
+        $comunasToken = $this->parseComunasToken($tokenRow->comuna);
+        if (!empty($comunasToken) && !in_array((string) $puesto->comuna, $comunasToken, true)) {
             return back()->withErrors(['puesto_id' => 'Puesto no permitido para la comuna del territorio.']);
         }
 
@@ -161,6 +162,7 @@ class PublicReferidosController extends Controller
         $tokenRow = $this->getTokenOrFail($token, false);
         $metaPct = $this->getMetaPctByEleccion((int) $tokenRow->eleccion_id);
         $municipiosConsulta = collect($tokenRow->municipios ?? [])->filter()->values();
+        $comunasToken = $this->parseComunasToken($tokenRow->comuna);
 
         $municipio = null;
         if (!$tokenRow->es_consulta) {
@@ -227,7 +229,7 @@ class PublicReferidosController extends Controller
                 }
             })
             ->when(!empty($tokenRow->comuna), function ($q) use ($tokenRow) {
-                $q->where('comuna', $tokenRow->comuna);
+                $q->whereIn('comuna', $this->parseComunasToken($tokenRow->comuna));
             })
             ->orderBy('municipio')
             ->orderBy('puesto')
@@ -348,8 +350,8 @@ class PublicReferidosController extends Controller
             ->where('eleccion_id', $tokenRow->eleccion_id)
             ->where('dd', $tokenRow->dd)
             ->where('mm', $tokenRow->mm)
-            ->when(!empty($tokenRow->comuna), function ($q) use ($tokenRow) {
-                $q->where('comuna', $tokenRow->comuna);
+            ->when(!empty($comunasToken = $this->parseComunasToken($tokenRow->comuna)), function ($q) use ($comunasToken) {
+                $q->whereIn('comuna', $comunasToken);
             })
             ->orderBy('puesto')
             ->get(['id', 'puesto', 'municipio', 'mesas_total']);
@@ -413,8 +415,8 @@ class PublicReferidosController extends Controller
             ->where('eleccion_id', $referido->eleccion_id)
             ->where('dd', $tokenRow->dd)
             ->where('mm', $tokenRow->mm)
-            ->when(!empty($tokenRow->comuna), function ($q) use ($tokenRow) {
-                $q->where('comuna', $tokenRow->comuna);
+            ->when(!empty($comunasToken = $this->parseComunasToken($tokenRow->comuna)), function ($q) use ($comunasToken) {
+                $q->whereIn('comuna', $comunasToken);
             })
             ->first();
         if (!$puesto) {
@@ -508,8 +510,8 @@ class PublicReferidosController extends Controller
             ->where('eleccion_id', $tokenRow->eleccion_id)
             ->where('dd', $tokenRow->dd)
             ->where('mm', $tokenRow->mm)
-            ->when(!empty($tokenRow->comuna), function ($q) use ($tokenRow) {
-                $q->where('comuna', $tokenRow->comuna);
+            ->when(!empty($comunasToken = $this->parseComunasToken($tokenRow->comuna)), function ($q) use ($comunasToken) {
+                $q->whereIn('comuna', $comunasToken);
             })
             ->first();
         if (!$puesto) {
@@ -604,8 +606,9 @@ class PublicReferidosController extends Controller
             ->where('dd', $tokenRow->dd)
             ->where('mm', $tokenRow->mm);
 
-        if ($tokenRow->comuna) {
-            $query->where('comuna', $tokenRow->comuna);
+        $comunasToken = $this->parseComunasToken($tokenRow->comuna);
+        if (!empty($comunasToken)) {
+            $query->whereIn('comuna', $comunasToken);
         }
 
         $search = trim((string) $request->get('q', ''));
@@ -739,5 +742,19 @@ class PublicReferidosController extends Controller
             'ocupados_meta' => (int) $ocupados,
             'espacios_40_libres' => max($metaObjetivo - (int) $ocupados, 0),
         ];
+    }
+
+    private function parseComunasToken(?string $value): array
+    {
+        if ($value === null || trim($value) === '') {
+            return [];
+        }
+
+        return collect(explode(',', $value))
+            ->map(fn ($item) => trim((string) $item))
+            ->filter(fn ($item) => $item !== '')
+            ->unique()
+            ->values()
+            ->all();
     }
 }

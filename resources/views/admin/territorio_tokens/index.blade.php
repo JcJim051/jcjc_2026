@@ -63,8 +63,8 @@
                     </div>
                     <div class="col-sm-4">
                         <div class="form-group">
-                            <label>Comuna (opcional)</label>
-                            <select name="comuna" id="comuna" class="form-control"></select>
+                            <label>Comunas (opcional)</label>
+                            <select name="comuna[]" id="comuna" class="form-control" multiple></select>
                         </div>
                     </div>
                 </div>
@@ -92,6 +92,11 @@
     <div class="card">
         <div class="card-header">
             <h3 class="card-title">Tokens existentes</h3>
+            <div class="card-tools">
+                <a href="{{ route('admin.territorio_tokens.export') }}" class="btn btn-sm btn-success">
+                    Descargar tabla
+                </a>
+            </div>
         </div>
         <div class="card-body">
             <table id="tokensTable" class="table table-bordered table-sm display nowrap" style="width:100%">
@@ -172,7 +177,7 @@
                                                     </div>
                                                     <div class="form-group">
                                                         <label>Comuna</label>
-                                                        <input type="text" name="comuna" class="form-control" value="{{ $t->comuna }}" {{ $t->es_consulta ? 'disabled' : '' }}>
+                                                        <input type="text" name="comuna" class="form-control" value="{{ $t->comuna }}" {{ $t->es_consulta ? 'disabled' : '' }} placeholder="Ej: 01COMUNA 1,02COMUNA 2">
                                                     </div>
                                                     @if($t->es_consulta)
                                                         <div class="form-group">

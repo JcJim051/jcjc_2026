@@ -15,8 +15,79 @@ class TerritorioTokensController extends Controller
 {
     public function index()
     {
+        [$elecciones, $tokens] = $this->buildTokensDataset();
+
+        return view('admin.territorio_tokens.index', compact('elecciones', 'tokens'));
+    }
+
+    public function export()
+    {
+        [, $tokens] = $this->buildTokensDataset();
+
+        $fileName = 'tokens_territoriales_' . now()->format('Ymd_His') . '.csv';
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ];
+
+        return response()->streamDownload(function () use ($tokens) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
+            fputcsv($out, [
+                'ID',
+                'Tipo',
+                'Encargado',
+                'Eleccion ID',
+                'Eleccion',
+                'Departamento',
+                'Municipio',
+                'Comunas',
+                'Mesas',
+                'Meta %',
+                'Meta objetivo',
+                'Ocupados',
+                'Referidos token',
+                'Referidos municipio',
+                'Faltan',
+                'Token',
+                'Activo',
+                'Expira',
+                'Creado',
+            ]);
+
+            foreach ($tokens as $t) {
+                fputcsv($out, [
+                    $t->id,
+                    $t->es_consulta ? 'Consulta' : 'Referidos',
+                    $t->responsable ?: 'N/D',
+                    $t->eleccion_id,
+                    $t->eleccion_nombre ?? '',
+                    $t->departamento_nombre ?? '',
+                    $t->municipio_nombre ?? '',
+                    $t->comuna ?? '',
+                    (int) ($t->mesas_total ?? 0),
+                    (int) ($t->meta_testigos_pct ?? 100),
+                    (int) ($t->meta_objetivo ?? 0),
+                    (int) ($t->ocupados_total ?? 0),
+                    (int) ($t->referidos_token_total ?? 0),
+                    (int) ($t->referidos_municipio_total ?? 0),
+                    (int) ($t->faltan_total ?? 0),
+                    $t->token,
+                    $t->activo ? 'SI' : 'NO',
+                    optional($t->expires_at)->format('Y-m-d H:i:s'),
+                    optional($t->created_at)->format('Y-m-d H:i:s'),
+                ]);
+            }
+
+            fclose($out);
+        }, $fileName, $headers);
+    }
+
+    private function buildTokensDataset(): array
+    {
         $elecciones = Eleccion::orderByDesc('id')->get();
         $tokens = TerritorioToken::orderByDesc('id')->get();
+        $eleccionesMap = $elecciones->keyBy('id');
 
         $municipiosMap = EleccionPuesto::query()
             ->whereIn('eleccion_id', $tokens->pluck('eleccion_id')->unique()->values())
@@ -41,12 +112,13 @@ class TerritorioTokensController extends Controller
                 return $r->eleccion_id . '|' . $r->dd . '|' . $r->mm;
             });
 
-        $tokens = $tokens->map(function ($t) use ($municipiosMap) {
+        $tokens = $tokens->map(function ($t) use ($municipiosMap, $eleccionesMap) {
             $key = $t->eleccion_id . '|' . $t->dd . '|' . $t->mm;
             $geo = $municipiosMap->get($key);
             $t->departamento_nombre = $geo->departamento ?? null;
             $t->municipio_nombre = $geo->municipio ?? null;
-            $metaPct = (int) (Eleccion::where('id', $t->eleccion_id)->value('meta_testigos_pct') ?? 100);
+            $t->eleccion_nombre = optional($eleccionesMap->get($t->eleccion_id))->nombre;
+            $metaPct = (int) (optional($eleccionesMap->get($t->eleccion_id))->meta_testigos_pct ?? 100);
             $metaPct = max(0, min(100, $metaPct));
             $t->meta_testigos_pct = $metaPct;
 
@@ -55,8 +127,9 @@ class TerritorioTokensController extends Controller
                 ->where('em.eleccion_id', $t->eleccion_id)
                 ->where('ep.dd', $t->dd)
                 ->where('ep.mm', $t->mm);
-            if (!empty($t->comuna)) {
-                $mesasQuery->where('ep.comuna', $t->comuna);
+            $comunasToken = $this->parseComunasToken($t->comuna);
+            if (!empty($comunasToken)) {
+                $mesasQuery->whereIn('ep.comuna', $comunasToken);
             }
             $t->mesas_total = (int) $mesasQuery->count();
 
@@ -64,8 +137,8 @@ class TerritorioTokensController extends Controller
                 ->where('ep.eleccion_id', $t->eleccion_id)
                 ->where('ep.dd', $t->dd)
                 ->where('ep.mm', $t->mm)
-                ->when(!empty($t->comuna), function ($q) use ($t) {
-                    $q->where('ep.comuna', $t->comuna);
+                ->when(!empty($comunasToken), function ($q) use ($comunasToken) {
+                    $q->whereIn('ep.comuna', $comunasToken);
                 })
                 ->pluck('ep.id');
 
@@ -98,7 +171,7 @@ class TerritorioTokensController extends Controller
             return $t;
         });
 
-        return view('admin.territorio_tokens.index', compact('elecciones', 'tokens'));
+        return [$elecciones, $tokens];
     }
 
     public function municipios(Request $request)
@@ -198,7 +271,8 @@ class TerritorioTokensController extends Controller
             'municipio_codigo' => 'nullable|string',
             'municipios_multi' => 'nullable|array',
             'municipios_multi.*' => 'string',
-            'comuna' => 'nullable|string|max:100',
+            'comuna' => 'nullable',
+            'comuna.*' => 'nullable|string|max:100',
             'responsable' => 'nullable|string|max:255',
             'expires_at' => 'nullable|date',
         ]);
@@ -225,7 +299,7 @@ class TerritorioTokensController extends Controller
             'eleccion_id' => $data['eleccion_id'],
             'dd' => $dd,
             'mm' => $mm,
-            'comuna' => $data['comuna'] ?? null,
+            'comuna' => $this->normalizeComunasInput($data['comuna'] ?? null),
             'es_consulta' => $mode === 'consulta',
             'municipios' => $mode === 'consulta' ? $municipiosMulti->all() : null,
             'token' => $token,
@@ -259,7 +333,7 @@ class TerritorioTokensController extends Controller
     {
         $data = $request->validate([
             'responsable' => 'nullable|string|max:255',
-            'comuna' => 'nullable|string|max:100',
+            'comuna' => 'nullable|string|max:255',
             'expires_at' => 'nullable|date',
             'activo' => 'nullable|boolean',
             'municipios_multi' => 'nullable|array',
@@ -292,5 +366,28 @@ class TerritorioTokensController extends Controller
 
         return redirect()->route('admin.territorio_tokens.index')
             ->with('success', 'Token actualizado correctamente.');
+    }
+
+    private function normalizeComunasInput($value): ?string
+    {
+        if (is_array($value)) {
+            $items = collect($value)->map(fn($v) => trim((string) $v))->filter()->unique()->values()->all();
+            return empty($items) ? null : implode(',', $items);
+        }
+        $value = trim((string) $value);
+        return $value === '' ? null : $value;
+    }
+
+    private function parseComunasToken(?string $value): array
+    {
+        if ($value === null) {
+            return [];
+        }
+        return collect(explode(',', $value))
+            ->map(fn($x) => trim((string) $x))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 }

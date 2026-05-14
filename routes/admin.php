@@ -114,6 +114,7 @@ Route::put('elecciones/{eleccion}', [EleccionesController::class, 'update'])->na
 Route::post('elecciones/{eleccion}/import-divipol', [EleccionesController::class, 'import'])->name('admin.elecciones.import');
 
 Route::get('territorio-tokens', [TerritorioTokensController::class, 'index'])->name('admin.territorio_tokens.index');
+Route::get('territorio-tokens/export', [TerritorioTokensController::class, 'export'])->name('admin.territorio_tokens.export');
 Route::post('territorio-tokens', [TerritorioTokensController::class, 'store'])->name('admin.territorio_tokens.store');
 Route::get('territorio-tokens/municipios', [TerritorioTokensController::class, 'municipios'])->name('admin.territorio_tokens.municipios');
 Route::get('territorio-tokens/comunas', [TerritorioTokensController::class, 'comunas'])->name('admin.territorio_tokens.comunas');
