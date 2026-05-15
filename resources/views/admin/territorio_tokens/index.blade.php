@@ -110,9 +110,12 @@
                         <th>Mesas</th>
                         <th>Meta %</th>
                         <th>Meta objetivo</th>
+                        <th>Meta pactada</th>
+                        <th>Avance pactado</th>
                         <th>Ocupados</th>
                         <th>Referidos T/M</th>
                         <th>Faltan</th>
+                        <th>Faltan pactada</th>
                         <th>Token</th>
                         <th>Activo</th>
                         <th>Accion</th>
@@ -131,9 +134,18 @@
                             <td><span class="badge badge-info">{{ $t->mesas_total ?? 0 }}</span></td>
                             <td><span class="badge badge-dark">{{ $t->meta_testigos_pct ?? 100 }}%</span></td>
                             <td><span class="badge badge-primary">{{ $t->meta_objetivo ?? 0 }}</span></td>
+                            <td><span class="badge badge-secondary">{{ $t->meta_pactada ?? 0 }}</span></td>
+                            <td>
+                                @if(!is_null($t->avance_pactada_pct))
+                                    <span class="badge badge-info">{{ $t->avance_pactada_pct }}%</span>
+                                @else
+                                    <span class="text-muted">N/D</span>
+                                @endif
+                            </td>
                             <td><span class="badge badge-success">{{ $t->ocupados_total ?? 0 }}</span></td>
                             <td><span class="badge badge-info">{{ $t->referidos_token_municipio ?? '0/0' }}</span></td>
                             <td><span class="badge badge-warning">{{ $t->faltan_total ?? 0 }}</span></td>
+                            <td><span class="badge badge-warning">{{ $t->faltan_pactada ?? 0 }}</span></td>
                             <td>
                                 <small>{{ $t->token }}</small><br>
                                 <small>
@@ -234,6 +246,12 @@
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.3.0/css/responsive.dataTables.min.css">
 <style>
+    .modal-backdrop {
+        z-index: 1040 !important;
+    }
+    .modal {
+        z-index: 1060 !important;
+    }
     .select2-container {
         width: 100% !important;
         max-width: 100% !important;
@@ -308,7 +326,6 @@
         line-height: 1.4;
     }
 </style>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/responsive/2.3.0/js/dataTables.responsive.min.js"></script>

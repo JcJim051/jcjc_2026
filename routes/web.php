@@ -25,6 +25,8 @@ Route::post('referidos/{token}', [App\Http\Controllers\PublicReferidosController
     ->name('public.referidos.store');
 Route::get('referidos/{token}/seguimiento', [App\Http\Controllers\PublicReferidosController::class, 'seguimiento'])
     ->name('public.referidos.seguimiento');
+Route::get('referidos/{token}/seguimiento/export-resumen', [App\Http\Controllers\PublicReferidosController::class, 'exportResumen'])
+    ->name('public.referidos.export_resumen');
 Route::get('referidos/{token}/seguimiento/{referido}/edit', [App\Http\Controllers\PublicReferidosController::class, 'edit'])
     ->name('public.referidos.edit');
 Route::put('referidos/{token}/seguimiento/{referido}', [App\Http\Controllers\PublicReferidosController::class, 'update'])

@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class PublicReferidosController extends Controller
 {
@@ -231,13 +233,19 @@ class PublicReferidosController extends Controller
             ->when(!empty($tokenRow->comuna), function ($q) use ($tokenRow) {
                 $q->whereIn('comuna', $this->parseComunasToken($tokenRow->comuna));
             })
-            ->orderBy('municipio')
-            ->orderBy('puesto')
+            ->orderBy('dd')
+            ->orderBy('mm')
+            ->orderBy('zz')
+            ->orderBy('pp')
             ->get([
                 'id',
                 'municipio',
                 'puesto',
                 'mesas_total',
+                'dd',
+                'mm',
+                'zz',
+                'pp',
             ]);
 
         $referidosAggPorPuesto = DB::table('referidos')
@@ -276,7 +284,12 @@ class PublicReferidosController extends Controller
             ->get()
             ->keyBy('eleccion_puesto_id');
 
-        $puestosAlcance = $puestosAlcance->map(function ($p) use ($referidosAggPorPuesto, $metaPct) {
+        $metasPactadasPorPuesto = DB::table('eleccion_puesto_metas')
+            ->where('eleccion_id', $tokenRow->eleccion_id)
+            ->whereIn('eleccion_puesto_id', $puestosAlcance->pluck('id')->all())
+            ->pluck('meta_pactada', 'eleccion_puesto_id');
+
+        $puestosAlcance = $puestosAlcance->map(function ($p) use ($referidosAggPorPuesto, $metaPct, $metasPactadasPorPuesto) {
                 $mesasTotal = (int) $p->mesas_total;
                 $metaObjetivo = (int) floor($mesasTotal * ($metaPct / 100));
                 $remanentesTotal = 0;
@@ -292,6 +305,7 @@ class PublicReferidosController extends Controller
                     'puesto' => $p->puesto,
                     'mesas_total' => $mesasTotal,
                     'meta_objetivo' => $metaObjetivo,
+                    'meta_pactada' => (int) ($metasPactadasPorPuesto[$p->id] ?? 0),
                     'remanentes_total' => $remanentesTotal,
                     'total_referidos' => $totalReferidos,
                     'c_referido' => (int) ($agg->c_referido ?? 0),
@@ -310,6 +324,121 @@ class PublicReferidosController extends Controller
             'referidos' => $referidos,
             'puestos_alcance' => $puestosAlcance,
         ]);
+    }
+
+    public function exportResumen(string $token)
+    {
+        $tokenRow = $this->getTokenOrFail($token, false);
+        $metaPct = $this->getMetaPctByEleccion((int) $tokenRow->eleccion_id);
+        $municipiosConsulta = collect($tokenRow->municipios ?? [])->filter()->values();
+
+        $puestosAlcance = EleccionPuesto::query()
+            ->where('eleccion_id', $tokenRow->eleccion_id)
+            ->where(function ($q) use ($tokenRow, $municipiosConsulta) {
+                if ($tokenRow->es_consulta) {
+                    foreach ($municipiosConsulta as $geoCode) {
+                        if (strpos((string) $geoCode, '-') === false) {
+                            continue;
+                        }
+                        [$dd, $mm] = explode('-', (string) $geoCode);
+                        $q->orWhere(function ($g) use ($dd, $mm) {
+                            $g->where('dd', $dd)->where('mm', $mm);
+                        });
+                    }
+                } else {
+                    $q->where('dd', $tokenRow->dd)->where('mm', $tokenRow->mm);
+                }
+            })
+            ->when(!empty($tokenRow->comuna), function ($q) use ($tokenRow) {
+                $q->whereIn('comuna', $this->parseComunasToken($tokenRow->comuna));
+            })
+            ->orderBy('dd')
+            ->orderBy('mm')
+            ->orderBy('zz')
+            ->orderBy('pp')
+            ->get([
+                'id',
+                'municipio',
+                'puesto',
+                'mesas_total',
+            ]);
+
+        $referidosAggPorPuesto = DB::table('referidos')
+            ->where(function ($q) use ($tokenRow, $municipiosConsulta) {
+                if ($tokenRow->es_consulta) {
+                    $q->where('eleccion_id', $tokenRow->eleccion_id)
+                        ->whereIn('eleccion_puesto_id', EleccionPuesto::query()
+                            ->where('eleccion_id', $tokenRow->eleccion_id)
+                            ->where(function ($geoQ) use ($municipiosConsulta) {
+                                foreach ($municipiosConsulta as $geoCode) {
+                                    if (strpos((string) $geoCode, '-') === false) {
+                                        continue;
+                                    }
+                                    [$dd, $mm] = explode('-', (string) $geoCode);
+                                    $geoQ->orWhere(function ($g) use ($dd, $mm) {
+                                        $g->where('dd', $dd)->where('mm', $mm);
+                                    });
+                                }
+                            })
+                            ->pluck('id')
+                            ->all());
+                } else {
+                    $q->where('territorio_token_id', $tokenRow->id);
+                }
+            })
+            ->selectRaw('
+                eleccion_puesto_id,
+                SUM(CASE WHEN estado <> "rechazado" THEN 1 ELSE 0 END) as total_referidos,
+                SUM(CASE WHEN estado = "asignado" THEN 1 ELSE 0 END) as c_asignado,
+                SUM(CASE WHEN estado = "validado" THEN 1 ELSE 0 END) as c_validado
+            ')
+            ->groupBy('eleccion_puesto_id')
+            ->get()
+            ->keyBy('eleccion_puesto_id');
+
+        $metasPactadasPorPuesto = DB::table('eleccion_puesto_metas')
+            ->where('eleccion_id', $tokenRow->eleccion_id)
+            ->whereIn('eleccion_puesto_id', $puestosAlcance->pluck('id')->all())
+            ->pluck('meta_pactada', 'eleccion_puesto_id');
+
+        $fileName = 'resumen_puestos_' . $tokenRow->token . '_' . now()->format('Ymd_His') . '.xlsx';
+
+        return response()->streamDownload(function () use ($puestosAlcance, $referidosAggPorPuesto, $metasPactadasPorPuesto, $metaPct) {
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Resumen');
+            $sheet->fromArray([
+                'Municipio', 'Puesto', 'Mesas Total', 'Meta', 'Meta pactada', 'Registrados', 'Asignado', 'Validado', 'Faltan',
+            ], null, 'A1');
+
+            $rowIndex = 2;
+            foreach ($puestosAlcance as $p) {
+                $agg = $referidosAggPorPuesto->get($p->id);
+                $mesasTotal = (int) ($p->mesas_total ?? 0);
+                $meta = (int) floor($mesasTotal * ($metaPct / 100));
+                $registrados = (int) ($agg->total_referidos ?? 0);
+                $sheet->fromArray([
+                    $p->municipio,
+                    $p->puesto,
+                    $mesasTotal,
+                    $meta,
+                    (int) ($metasPactadasPorPuesto[$p->id] ?? 0),
+                    $registrados,
+                    (int) ($agg->c_asignado ?? 0),
+                    (int) ($agg->c_validado ?? 0),
+                    max($meta - $registrados, 0),
+                ], null, 'A' . $rowIndex);
+                $rowIndex++;
+            }
+
+            foreach (range('A', 'I') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+            $spreadsheet->disconnectWorksheets();
+        }, $fileName, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
     }
 
     public function edit(string $token, int $referidoId)

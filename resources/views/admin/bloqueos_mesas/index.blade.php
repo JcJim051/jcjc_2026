@@ -120,6 +120,14 @@
                             <label>Archivo Excel (xlsx/xls)</label>
                             <input type="file" name="archivo" class="form-control" accept=".xlsx,.xls" required>
                         </div>
+                        <div class="form-group">
+                            <label>Modo de importación</label>
+                            <select name="modo_importacion" class="form-control" required>
+                                <option value="ubicacion">Ubicación en mesa (columna M)</option>
+                                <option value="cant_u_objetivo">Ajuste por CANT U (bloquear adicionales)</option>
+                            </select>
+                            <small class="text-muted">CANT U toma la cantidad exacta a dejar habilitada por puesto y bloquea solo mesas que aún estén libres.</small>
+                        </div>
                         <div class="form-check">
                             <input type="checkbox" class="form-check-input" id="replace_existing" name="replace_existing" value="1">
                             <label class="form-check-label" for="replace_existing">Reemplazar bloqueos externos existentes de esta elección</label>

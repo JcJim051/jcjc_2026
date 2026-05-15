@@ -68,6 +68,7 @@
                             'municipio' => $mun,
                             'mesas_total' => 0,
                             'meta' => 0,
+                            'meta_pactada' => 0,
                             'registrados' => 0,
                             'asignado' => 0,
                             'validado' => 0,
@@ -77,6 +78,7 @@
                     }
                     $resumenMunicipios[$mun]['mesas_total'] += (int) ($p->mesas_total ?? 0);
                     $resumenMunicipios[$mun]['meta'] += (int) ($p->meta_objetivo ?? 0);
+                    $resumenMunicipios[$mun]['meta_pactada'] += (int) ($p->meta_pactada ?? 0);
                     $resumenMunicipios[$mun]['registrados'] += (int) ($p->total_referidos ?? 0);
                     $resumenMunicipios[$mun]['asignado'] += (int) ($p->c_asignado ?? 0);
                     $resumenMunicipios[$mun]['validado'] += (int) ($p->c_validado ?? 0);
@@ -85,6 +87,7 @@
                         'puesto' => (string) ($p->puesto ?? 'N/D'),
                         'mesas_total' => (int) ($p->mesas_total ?? 0),
                         'meta' => (int) ($p->meta_objetivo ?? 0),
+                        'meta_pactada' => (int) ($p->meta_pactada ?? 0),
                         'registrados' => (int) ($p->total_referidos ?? 0),
                         'asignado' => (int) ($p->c_asignado ?? 0),
                         'validado' => (int) ($p->c_validado ?? 0),
@@ -95,7 +98,10 @@
             @endphp
 
             <div class="table-responsive table-wrap summary-grid">
-                <h5>Resumen General Por Municipio</h5>
+                <div class="d-flex justify-content-between align-items-center px-2 pt-2">
+                    <h5 class="mb-0">Resumen General Por Municipio</h5>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ route('public.referidos.export_resumen', $token->token) }}">Descargar tabla</a>
+                </div>
                 <table id="summaryTable" class="table table-sm mb-0 summary-table display nowrap" style="width:100%">
                     <thead>
                         <tr>
@@ -104,6 +110,8 @@
                             <th>Mesas Total</th>
                             <th>Avance Total %</th>
                             <th>Meta ({{ $meta_pct ?? 100 }}%)</th>
+                            <th>Meta pactada</th>
+                            <th>Avance pactado %</th>
                             <th>Registrados</th>
                             <th>Asignado</th>
                             <th>Validado</th>
@@ -116,6 +124,7 @@
                             $totalMeta = 0;
                             $totalMesas = 0;
                             $totalRegistrados = 0;
+                            $totalMetaPactada = 0;
                             $totalAsignado = 0;
                             $totalValidado = 0;
                             $totalFaltan = 0;
@@ -124,7 +133,9 @@
                             @php
                                 $avance = ((int) $m['meta'] > 0) ? round(((int) $m['registrados'] / (int) $m['meta']) * 100, 1) : 0;
                                 $avanceTotalMesas = ((int) $m['mesas_total'] > 0) ? round(((int) $m['registrados'] / (int) $m['mesas_total']) * 100, 1) : 0;
+                                $avancePactado = ((int) $m['meta_pactada'] > 0) ? round(((int) $m['registrados'] / (int) $m['meta_pactada']) * 100, 1) : 0;
                                 $totalMesas += (int) $m['mesas_total'];
+                                $totalMetaPactada += (int) $m['meta_pactada'];
                                 $totalMeta += (int) $m['meta'];
                                 $totalRegistrados += (int) $m['registrados'];
                                 $totalAsignado += (int) $m['asignado'];
@@ -132,11 +143,13 @@
                                 $totalFaltan += (int) $m['faltan'];
                             @endphp
                             <tr>
-                                <td><button type="button" class="btn btn-sm btn-outline-primary details-btn">Ver</button></td>
+                                <td><button type="button" class="btn btn-sm btn-outline-primary details-btn" data-municipio="{{ $m['municipio'] }}">Ver</button></td>
                                 <td>{{ $m['municipio'] }}</td>
                                 <td>{{ $m['mesas_total'] }}</td>
                                 <td><strong>{{ $avanceTotalMesas }}%</strong></td>
                                 <td>{{ $m['meta'] }}</td>
+                                <td>{{ $m['meta_pactada'] }}</td>
+                                <td><strong>{{ $avancePactado }}%</strong></td>
                                 <td><strong>{{ $m['registrados'] }}</strong></td>
                                 <td>{{ $m['asignado'] }}</td>
                                 <td>{{ $m['validado'] }}</td>
@@ -144,13 +157,14 @@
                                 <td><strong>{{ $m['faltan'] }}</strong></td>
                             </tr>
                         @empty
-                            <tr><td colspan="10" class="text-center text-muted">No hay puestos en el alcance actual.</td></tr>
+                            <tr><td colspan="12" class="text-center text-muted">No hay puestos en el alcance actual.</td></tr>
                         @endforelse
                     </tbody>
                     @if (count($resumenMunicipios) > 0)
                     @php
                         $avanceTotal = $totalMeta > 0 ? round(($totalRegistrados / $totalMeta) * 100, 1) : 0;
                         $avanceMesasTotal = $totalMesas > 0 ? round(($totalRegistrados / $totalMesas) * 100, 1) : 0;
+                        $avancePactadoTotal = $totalMetaPactada > 0 ? round(($totalRegistrados / $totalMetaPactada) * 100, 1) : 0;
                     @endphp
                     <tfoot>
                         <tr style="background:#eef5ff; font-weight:700;">
@@ -159,6 +173,8 @@
                             <td>{{ $totalMesas }}</td>
                             <td>{{ $avanceMesasTotal }}%</td>
                             <td>{{ $totalMeta }}</td>
+                            <td>{{ $totalMetaPactada }}</td>
+                            <td>{{ $avancePactadoTotal }}%</td>
                             <td>{{ $totalRegistrados }}</td>
                             <td>{{ $totalAsignado }}</td>
                             <td>{{ $totalValidado }}</td>
@@ -229,16 +245,21 @@
 <script>
     $(function () {
         var resumenMunicipios = @json($resumenMunicipios);
+        var resumenMunicipiosMap = {};
+        resumenMunicipios.forEach(function (m) {
+            resumenMunicipiosMap[m.municipio] = m;
+        });
 
         function formatPuestos(rows) {
             if (!rows || !rows.length) return '<div class="p-2 text-muted">Sin detalle de puestos.</div>';
             var html = '<div class="p-2"><table class="table table-sm table-bordered mb-0">';
-            html += '<thead><tr><th>Puesto</th><th>Mesas Total</th><th>Meta</th><th>Registrados</th><th>Asignado</th><th>Validado</th><th>Faltan</th></tr></thead><tbody>';
+            html += '<thead><tr><th>Puesto</th><th>Mesas Total</th><th>Meta</th><th>Meta pactada</th><th>Registrados</th><th>Asignado</th><th>Validado</th><th>Faltan</th></tr></thead><tbody>';
             rows.forEach(function (r) {
                 html += '<tr>'
                     + '<td>' + (r.puesto || 'N/D') + '</td>'
                     + '<td>' + (r.mesas_total || 0) + '</td>'
                     + '<td>' + (r.meta || 0) + '</td>'
+                    + '<td>' + (r.meta_pactada || 0) + '</td>'
                     + '<td><strong>' + (r.registrados || 0) + '</strong></td>'
                     + '<td>' + (r.asignado || 0) + '</td>'
                     + '<td>' + (r.validado || 0) + '</td>'
@@ -256,7 +277,7 @@
             order: [[1, 'asc']],
             columnDefs: [
                 { orderable: false, targets: 0 },
-                { responsivePriority: 1, targets: [1, 2, 3, 4, 8] }
+                { responsivePriority: 1, targets: [1, 2, 3, 4, 5, 10] }
             ],
             language: {
                 search: 'Buscar:',
@@ -267,20 +288,26 @@
         });
 
         $('#summaryTable tbody').on('click', 'button.details-btn', function () {
-            var tr = $(this).closest('tr');
-            var row = summaryTable.row(tr);
-            var index = row.index();
-            var data = resumenMunicipios[index] || {};
-
-            if (row.child.isShown()) {
-                row.child.hide();
-                tr.removeClass('shown');
-                $(this).text('Ver');
-            } else {
-                row.child(formatPuestos(data.puestos || [])).show();
-                tr.addClass('shown');
-                $(this).text('Ocultar');
+            var $btn = $(this);
+            var tr = $btn.closest('tr');
+            if (tr.hasClass('child')) {
+                tr = tr.prev('tr');
             }
+
+            var municipio = $btn.data('municipio') || '';
+            var data = resumenMunicipiosMap[municipio] || {};
+
+            var $next = tr.next('tr.summary-detail-row');
+            if ($next.length) {
+                $next.remove();
+                $btn.text('Ver');
+                return;
+            }
+
+            var colSpan = $('#summaryTable thead th').length;
+            var detailHtml = '<tr class="summary-detail-row"><td colspan="' + colSpan + '">' + formatPuestos(data.puestos || []) + '</td></tr>';
+            tr.after(detailHtml);
+            $btn.text('Ocultar');
         });
 
         @if (empty($token->es_consulta))

@@ -45,10 +45,13 @@ class TerritorioTokensController extends Controller
                 'Mesas',
                 'Meta %',
                 'Meta objetivo',
+                'Meta pactada',
+                'Avance pactada %',
                 'Ocupados',
                 'Referidos token',
                 'Referidos municipio',
                 'Faltan',
+                'Faltan pactada',
                 'Token',
                 'Activo',
                 'Expira',
@@ -68,10 +71,13 @@ class TerritorioTokensController extends Controller
                     (int) ($t->mesas_total ?? 0),
                     (int) ($t->meta_testigos_pct ?? 100),
                     (int) ($t->meta_objetivo ?? 0),
+                    (int) ($t->meta_pactada ?? 0),
+                    $t->avance_pactada_pct ?? '',
                     (int) ($t->ocupados_total ?? 0),
                     (int) ($t->referidos_token_total ?? 0),
                     (int) ($t->referidos_municipio_total ?? 0),
                     (int) ($t->faltan_total ?? 0),
+                    (int) ($t->faltan_pactada ?? 0),
                     $t->token,
                     $t->activo ? 'SI' : 'NO',
                     optional($t->expires_at)->format('Y-m-d H:i:s'),
@@ -156,6 +162,14 @@ class TerritorioTokensController extends Controller
                 }
             }
             $t->meta_objetivo = $metaObjetivo;
+            $metaPactada = 0;
+            if ($puestos->isNotEmpty()) {
+                $metaPactada = (int) DB::table('eleccion_puesto_metas')
+                    ->where('eleccion_id', $t->eleccion_id)
+                    ->whereIn('eleccion_puesto_id', $puestos->all())
+                    ->sum('meta_pactada');
+            }
+            $t->meta_pactada = $metaPactada;
 
             $refMunicipioKey = $t->eleccion_id . '|' . $t->dd . '|' . $t->mm;
             $t->referidos_token_total = (int) ($referidosPorToken[$t->id] ?? 0);
@@ -168,6 +182,10 @@ class TerritorioTokensController extends Controller
                 ->count();
             $t->referidos_total = $t->ocupados_total;
             $t->faltan_total = max($metaObjetivo - $t->ocupados_total, 0);
+            $t->faltan_pactada = max($metaPactada - $t->ocupados_total, 0);
+            $t->avance_pactada_pct = $metaPactada > 0
+                ? round(($t->ocupados_total / $metaPactada) * 100, 1)
+                : null;
             return $t;
         });
 
