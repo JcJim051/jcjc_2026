@@ -7,6 +7,7 @@ use App\Models\Eleccion;
 use App\Models\MesaBloqueo;
 use App\Models\EleccionPuesto;
 use App\Models\EleccionPuestoMeta;
+use App\Models\Referido;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
