@@ -36,8 +36,8 @@
                         </select>
                     </div>
                     <div class="col-sm-6">
-                        <label>Archivo POSTULADOS (xlsx)</label>
-                        <input type="file" name="archivo" class="form-control" accept=".xlsx" required>
+                        <label>Archivo POSTULADOS (xlsx/csv)</label>
+                        <input type="file" name="archivo" class="form-control" accept=".xlsx,.csv,.txt" required>
                     </div>
                     <div class="col-sm-2" style="padding-top: 30px;">
                         <button class="btn btn-primary" type="submit">Importar</button>
@@ -65,11 +65,35 @@
                         </select>
                     </div>
                     <div class="col-sm-6">
-                        <label>Archivo ACREDITADOS (xlsx)</label>
-                        <input type="file" name="archivo" class="form-control" accept=".xlsx" required>
+                        <label>Archivo ACREDITADOS (xlsx/csv)</label>
+                        <input type="file" name="archivo" class="form-control" accept=".xlsx,.csv,.txt" required>
                     </div>
                     <div class="col-sm-2" style="padding-top: 30px;">
                         <button class="btn btn-success" type="submit">Importar</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Descargar Asignados Pendientes de Postulacion</h3>
+        </div>
+        <div class="card-body">
+            <form action="{{ route('admin.cne_import.asignados_pendientes') }}" method="GET">
+                <div class="row">
+                    <div class="col-sm-4">
+                        <label>Eleccion</label>
+                        <select name="eleccion_id" class="form-control" required>
+                            <option value="">Seleccione...</option>
+                            @foreach ($elecciones as $e)
+                                <option value="{{ $e->id }}">{{ $e->id }} - {{ $e->nombre }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-sm-3" style="padding-top: 30px;">
+                        <button class="btn btn-warning" type="submit">Descargar Excel</button>
                     </div>
                 </div>
             </form>

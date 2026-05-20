@@ -146,3 +146,4 @@ Route::put('validacion-ani-coordinador/{coordinacion}', [ValidacionAniController
 Route::get('cne-import', [CneImportController::class, 'index'])->name('admin.cne_import.index');
 Route::post('cne-import/postulados', [CneImportController::class, 'importarPostulados'])->name('admin.cne_import.postulados');
 Route::post('cne-import/acreditados', [CneImportController::class, 'importarAcreditados'])->name('admin.cne_import.acreditados');
+Route::get('cne-import/asignados-pendientes', [CneImportController::class, 'exportarAsignadosPendientes'])->name('admin.cne_import.asignados_pendientes');

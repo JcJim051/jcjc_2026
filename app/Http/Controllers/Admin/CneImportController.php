@@ -25,11 +25,61 @@ class CneImportController extends Controller
         return $this->importar($request, 'postulado', 'acreditado');
     }
 
+    public function exportarAsignadosPendientes(Request $request)
+    {
+        $data = $request->validate([
+            'eleccion_id' => 'required|integer|exists:elecciones,id',
+        ]);
+
+        $rows = DB::table('referidos')
+            ->join('personas', 'personas.id', '=', 'referidos.persona_id')
+            ->where('referidos.eleccion_id', $data['eleccion_id'])
+            ->where('referidos.estado', 'asignado')
+            ->orderBy('personas.cedula')
+            ->get([
+                'personas.cedula',
+                'personas.nombre',
+                'personas.email',
+                'personas.telefono',
+            ]);
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Pendientes_Postulacion');
+        $sheet->fromArray([
+            ['Identificacion', 'Nombre', 'Correo', 'Celular'],
+        ], null, 'A1');
+
+        $rowNum = 2;
+        foreach ($rows as $r) {
+            $sheet->fromArray([[
+                (string) ($r->cedula ?? ''),
+                (string) ($r->nombre ?? ''),
+                (string) ($r->email ?? ''),
+                (string) ($r->telefono ?? ''),
+            ]], null, 'A' . $rowNum);
+            $rowNum++;
+        }
+
+        foreach (range('A', 'D') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $fileName = 'asignados_pendientes_postulacion_eleccion_' . $data['eleccion_id'] . '_' . now()->format('Ymd_His') . '.xlsx';
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
     private function importar(Request $request, string $estadoActual, string $estadoNuevo)
     {
         $data = $request->validate([
             'eleccion_id' => 'required|integer|exists:elecciones,id',
-            'archivo' => 'required|file|mimes:xlsx',
+            'archivo' => 'required|file|mimes:xlsx,csv,txt',
         ]);
 
         if (!class_exists('PhpOffice\\PhpSpreadsheet\\IOFactory')) {
@@ -38,7 +88,15 @@ class CneImportController extends Controller
 
         $filePath = $request->file('archivo')->getRealPath();
 
-        $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xlsx');
+        $ext = strtolower((string) $request->file('archivo')->getClientOriginalExtension());
+        if (in_array($ext, ['csv', 'txt'], true)) {
+            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Csv');
+            $reader->setDelimiter(';');
+            $reader->setEnclosure('"');
+            $reader->setSheetIndex(0);
+        } else {
+            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xlsx');
+        }
         $reader->setReadDataOnly(true);
         $reader->setReadEmptyCells(false);
 
@@ -50,7 +108,7 @@ class CneImportController extends Controller
 
         $colMap = $this->mapColumns($header);
         if (!isset($colMap['identificacion'])) {
-            return back()->with('error', 'No se encontro la columna Identificacion.');
+            return back()->with('error', 'No se encontro la columna Identificacion/Cedula.');
         }
 
         $updated = 0;
@@ -64,6 +122,7 @@ class CneImportController extends Controller
             if ($cedula === '') {
                 continue;
             }
+            $cedula = preg_replace('/\D+/', '', $cedula) ?: $cedula;
 
             $affected = DB::table('referidos')
                 ->join('personas', 'personas.id', '=', 'referidos.persona_id')
@@ -87,7 +146,7 @@ class CneImportController extends Controller
         $map = [];
         foreach ($header as $col => $name) {
             $key = $this->norm($name);
-            if ($key === 'identificacion') {
+            if (in_array($key, ['identificacion', 'cedula', 'documento de identificacion', 'documento'], true)) {
                 $map['identificacion'] = $col;
             }
         }
