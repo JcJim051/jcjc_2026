@@ -499,20 +499,20 @@ class ReferidosController extends Controller
             [$n1, $n2, $a1, $a2] = $this->splitNombreMeta((string) $r->nombre);
             $payload[] = [
                 'Cod Depto' => $this->toIntOrValue($r->dd),
-                'Nom Departamento' => (string) ($r->departamento ?? ''),
+                'Nom Departamento' => $this->normalizeMetaText((string) ($r->departamento ?? '')),
                 'Cod Mpio' => $this->toIntOrValue($r->mm),
-                'Nom Municipio' => (string) ($r->municipio ?? ''),
+                'Nom Municipio' => $this->normalizeMetaText((string) ($r->municipio ?? '')),
                 'Cod Zona' => $this->toIntOrValue($r->zz),
                 'Cod Puesto' => str_pad((string) $r->pp, 2, '0', STR_PAD_LEFT),
-                'Nombre Puesto' => (string) ($r->puesto ?? ''),
+                'Nombre Puesto' => $this->normalizeMetaText((string) ($r->puesto ?? '')),
                 'Mesa' => (int) $r->mesa_num,
                 'Cedula' => (string) ($r->cedula ?? ''),
-                'Nombre 1' => $n1,
-                'Nombre 2' => $n2,
-                'Apellido 1' => $a1,
-                'Apellido 2' => $a2,
+                'Nombre 1' => $this->normalizeMetaText($n1),
+                'Nombre 2' => $this->normalizeMetaText($n2),
+                'Apellido 1' => $this->normalizeMetaText($a1),
+                'Apellido 2' => $this->normalizeMetaText($a2),
                 'Celular' => (string) ($r->telefono ?? ''),
-                'Correo' => (string) ($r->email ?? ''),
+                'Correo' => mb_strtolower($this->normalizeMetaText((string) ($r->email ?? '')), 'UTF-8'),
                 'Nivel Educativo' => '',
             ];
         }
@@ -691,5 +691,27 @@ class ReferidosController extends Controller
             return (int) $value;
         }
         return (string) $value;
+    }
+
+    private function normalizeMetaText(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $map = [
+            'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U',
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
+            'À' => 'A', 'È' => 'E', 'Ì' => 'I', 'Ò' => 'O', 'Ù' => 'U',
+            'à' => 'a', 'è' => 'e', 'ì' => 'i', 'ò' => 'o', 'ù' => 'u',
+            'Ä' => 'A', 'Ë' => 'E', 'Ï' => 'I', 'Ö' => 'O', 'Ü' => 'U',
+            'ä' => 'a', 'ë' => 'e', 'ï' => 'i', 'ö' => 'o', 'ü' => 'u',
+            'Â' => 'A', 'Ê' => 'E', 'Î' => 'I', 'Ô' => 'O', 'Û' => 'U',
+            'â' => 'a', 'ê' => 'e', 'î' => 'i', 'ô' => 'o', 'û' => 'u',
+            'Ñ' => 'N', 'ñ' => 'n',
+        ];
+
+        return strtr($value, $map);
     }
 }

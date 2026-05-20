@@ -59,6 +59,7 @@
                     <th>Puesto</th>
                     <th>Mesa</th>
                     <th>Origen</th>
+                    <th>Detalle</th>
                     <th>Lote</th>
                     <th>Fila</th>
                     <th>Fecha</th>
@@ -76,15 +77,26 @@
                         <td>{{ $b->puesto }}</td>
                         <td>{{ $b->mesa_num }}</td>
                         <td>{{ $b->origen }}</td>
+                        <td>
+                            @if(($b->bloqueo_tipo ?? 'manual') === 'referido')
+                                {{ $b->persona_nombre }} ({{ $b->persona_cedula }}) - {{ strtoupper($b->referido_estado) }}
+                            @else
+                                -
+                            @endif
+                        </td>
                         <td>{{ $b->lote ?: '-' }}</td>
                         <td>{{ $b->fila_origen ?: '-' }}</td>
                         <td>{{ $b->created_at }}</td>
                         <td>
-                            <form action="{{ route('admin.bloqueos_mesas.destroy', $b->id) }}" method="POST" style="display:inline;">
-                                @csrf
-                                @method('DELETE')
-                                <button class="btn btn-sm btn-danger" type="submit" onclick="return confirm('¿Desbloquear esta mesa?')">Desbloquear</button>
-                            </form>
+                            @if(($b->bloqueo_tipo ?? 'manual') === 'manual')
+                                <form action="{{ route('admin.bloqueos_mesas.destroy', $b->id) }}" method="POST" style="display:inline;">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button class="btn btn-sm btn-danger" type="submit" onclick="return confirm('¿Desbloquear esta mesa?')">Desbloquear</button>
+                                </form>
+                            @else
+                                <span class="badge badge-secondary">Gestionar en referidos</span>
+                            @endif
                         </td>
                     </tr>
                 @endforeach

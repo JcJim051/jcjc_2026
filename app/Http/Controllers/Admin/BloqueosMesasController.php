@@ -36,6 +36,7 @@ class BloqueosMesasController extends Controller
                 'mb.lote',
                 'mb.fila_origen',
                 'mb.created_at',
+                DB::raw("'manual' as bloqueo_tipo"),
             ])
             ->orderByDesc('mb.id');
 
@@ -43,7 +44,50 @@ class BloqueosMesasController extends Controller
             $query->where('mb.eleccion_id', $eleccionId);
         }
 
-        $bloqueos = $query->get();
+        $bloqueosManuales = $query->get();
+
+        $ocupadasReferidosQuery = DB::table('referidos as r')
+            ->join('eleccion_puestos as ep', 'ep.id', '=', 'r.eleccion_puesto_id')
+            ->join('elecciones as e', 'e.id', '=', 'r.eleccion_id')
+            ->join('personas as p', 'p.id', '=', 'r.persona_id')
+            ->whereNotNull('r.eleccion_puesto_id')
+            ->whereNotNull('r.mesa_num')
+            ->where('r.estado', '<>', 'rechazado')
+            ->select([
+                DB::raw("CONCAT('ref-', r.id) as id"),
+                'r.eleccion_id',
+                'e.nombre as eleccion',
+                'ep.departamento',
+                'ep.municipio',
+                'ep.comuna',
+                'ep.puesto',
+                'r.mesa_num',
+                DB::raw("'referido_activo' as origen"),
+                DB::raw("NULL as lote"),
+                DB::raw("NULL as fila_origen"),
+                'r.updated_at as created_at',
+                DB::raw("'referido' as bloqueo_tipo"),
+                'p.nombre as persona_nombre',
+                'p.cedula as persona_cedula',
+                'r.estado as referido_estado',
+            ]);
+
+        if ($eleccionId > 0) {
+            $ocupadasReferidosQuery->where('r.eleccion_id', $eleccionId);
+        }
+
+        $ocupadasReferidos = $ocupadasReferidosQuery->get();
+
+        $bloqueos = $bloqueosManuales->map(function ($b) {
+            $b->persona_nombre = null;
+            $b->persona_cedula = null;
+            $b->referido_estado = null;
+            return $b;
+        })->concat($ocupadasReferidos)
+            ->sortByDesc(function ($r) {
+                return strtotime((string) ($r->created_at ?? now()));
+            })
+            ->values();
 
         return view('admin.bloqueos_mesas.index', compact('bloqueos', 'elecciones', 'eleccionId'));
     }

@@ -93,8 +93,8 @@ class PublicReferidosController extends Controller
             return back()->withErrors(['puesto_id' => 'Puesto no permitido para la comuna del territorio.']);
         }
 
-        if ((int) $data['mesa_num'] > (int) $puesto->mesas_total) {
-            return back()->withErrors(['mesa_num' => 'La mesa excede el total permitido para este puesto.']);
+        if (!$this->mesaExisteEnEleccionPuesto((int) $tokenRow->eleccion_id, (int) $puesto->id, (int) $data['mesa_num'])) {
+            return back()->withErrors(['mesa_num' => 'La mesa no existe en DIVIPOL para este puesto.']);
         }
 
         $mesaBloqueada = MesaBloqueo::query()
@@ -552,8 +552,8 @@ class PublicReferidosController extends Controller
             return back()->withErrors(['puesto_id' => 'Puesto no permitido para este territorio.'])->withInput();
         }
 
-        if ((int) $data['mesa_num'] > (int) $puesto->mesas_total) {
-            return back()->withErrors(['mesa_num' => 'La mesa excede el total permitido para este puesto.'])->withInput();
+        if (!$this->mesaExisteEnEleccionPuesto((int) $referido->eleccion_id, (int) $puesto->id, (int) $data['mesa_num'])) {
+            return back()->withErrors(['mesa_num' => 'La mesa no existe en DIVIPOL para este puesto.'])->withInput();
         }
 
         $mesaBloqueada = MesaBloqueo::query()
@@ -660,7 +660,10 @@ class PublicReferidosController extends Controller
 
         return response()->json([
             'results' => $mesas->map(fn ($m) => ['id' => $m, 'text' => 'Mesa ' . $m]),
-            'max' => (int) $puesto->mesas_total,
+            'max' => (int) DB::table('eleccion_mesas')
+                ->where('eleccion_id', $tokenRow->eleccion_id)
+                ->where('eleccion_puesto_id', $puesto->id)
+                ->max('mesa_num'),
             'mesas_no_asignadas' => (int) $mesas->count(),
             'meta_pct' => (int) $cupo['meta_pct'],
             'meta_objetivo' => (int) $cupo['meta_objetivo'],
@@ -803,11 +806,16 @@ class PublicReferidosController extends Controller
 
     private function getMesasDisponibles(int $eleccionId, int $puestoId, int $excludeReferidoId = 0)
     {
-        $puesto = EleccionPuesto::query()
-            ->where('id', $puestoId)
+        $mesasUniverso = DB::table('eleccion_mesas')
             ->where('eleccion_id', $eleccionId)
-            ->first();
-        if (!$puesto || (int) $puesto->mesas_total <= 0) {
+            ->where('eleccion_puesto_id', $puestoId)
+            ->pluck('mesa_num')
+            ->map(fn ($v) => (int) $v)
+            ->unique()
+            ->sort()
+            ->values();
+
+        if ($mesasUniverso->isEmpty()) {
             return collect();
         }
 
@@ -831,9 +839,18 @@ class PublicReferidosController extends Controller
             ->unique()
             ->all();
 
-        return collect(range(1, (int) $puesto->mesas_total))
+        return $mesasUniverso
             ->reject(fn ($mesa) => in_array((int) $mesa, $ocupadas, true) || in_array((int) $mesa, $bloqueadas, true))
             ->values();
+    }
+
+    private function mesaExisteEnEleccionPuesto(int $eleccionId, int $puestoId, int $mesaNum): bool
+    {
+        return DB::table('eleccion_mesas')
+            ->where('eleccion_id', $eleccionId)
+            ->where('eleccion_puesto_id', $puestoId)
+            ->where('mesa_num', $mesaNum)
+            ->exists();
     }
 
     private function getMetaPctByEleccion(int $eleccionId): int
@@ -853,7 +870,12 @@ class PublicReferidosController extends Controller
             ->count();
 
         $metaPct = $this->getMetaPctByEleccion($eleccionId);
-        $metaObjetivo = (int) floor($mesasTotal * ($metaPct / 100));
+        $metaObjetivoOficial = (int) floor($mesasTotal * ($metaPct / 100));
+        $metaPactada = (int) DB::table('eleccion_puesto_metas')
+            ->where('eleccion_id', $eleccionId)
+            ->where('eleccion_puesto_id', $puestoId)
+            ->value('meta_pactada');
+        $metaObjetivo = $metaPactada > 0 ? $metaPactada : $metaObjetivoOficial;
 
         $ocupados = Referido::query()
             ->where('eleccion_id', $eleccionId)
@@ -867,6 +889,8 @@ class PublicReferidosController extends Controller
         return [
             'mesas_total' => $mesasTotal,
             'meta_pct' => $metaPct,
+            'meta_objetivo_oficial' => $metaObjetivoOficial,
+            'meta_pactada' => $metaPactada,
             'meta_objetivo' => $metaObjetivo,
             'ocupados_meta' => (int) $ocupados,
             'espacios_40_libres' => max($metaObjetivo - (int) $ocupados, 0),
