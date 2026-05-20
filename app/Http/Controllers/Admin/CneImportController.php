@@ -34,20 +34,21 @@ class CneImportController extends Controller
         $rows = DB::table('referidos')
             ->join('personas', 'personas.id', '=', 'referidos.persona_id')
             ->where('referidos.eleccion_id', $data['eleccion_id'])
-            ->where('referidos.estado', 'asignado')
+            ->whereIn('referidos.estado', ['asignado', 'validado'])
             ->orderBy('personas.cedula')
             ->get([
                 'personas.cedula',
                 'personas.nombre',
                 'personas.email',
                 'personas.telefono',
+                'referidos.estado',
             ]);
 
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Pendientes_Postulacion');
         $sheet->fromArray([
-            ['Identificacion', 'Nombre', 'Correo', 'Celular'],
+            ['Identificacion', 'Nombre', 'Correo', 'Celular', 'Estado actual'],
         ], null, 'A1');
 
         $rowNum = 2;
@@ -57,11 +58,12 @@ class CneImportController extends Controller
                 (string) ($r->nombre ?? ''),
                 (string) ($r->email ?? ''),
                 (string) ($r->telefono ?? ''),
+                (string) ($r->estado ?? ''),
             ]], null, 'A' . $rowNum);
             $rowNum++;
         }
 
-        foreach (range('A', 'D') as $col) {
+        foreach (range('A', 'E') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
