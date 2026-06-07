@@ -24,7 +24,7 @@ class PublicReferidosController extends Controller
         if ($tokenRow->es_consulta) {
             return redirect()->route('public.referidos.seguimiento', $tokenRow->token);
         }
-        if (!$tokenRow->activo || ($tokenRow->expires_at && $tokenRow->expires_at->isPast())) {
+        if (!$tokenRow->activo || !$this->tokenElectionIsActive($tokenRow) || ($tokenRow->expires_at && $tokenRow->expires_at->isPast())) {
             return view('public.referidos.cerrado', ['token' => $tokenRow]);
         }
 
@@ -56,7 +56,7 @@ class PublicReferidosController extends Controller
             return redirect()->route('public.referidos.seguimiento', $tokenRow->token)
                 ->with('error', 'Este token es solo de consulta.');
         }
-        if (!$tokenRow->activo || ($tokenRow->expires_at && $tokenRow->expires_at->isPast())) {
+        if (!$tokenRow->activo || !$this->tokenElectionIsActive($tokenRow) || ($tokenRow->expires_at && $tokenRow->expires_at->isPast())) {
             return redirect()->route('public.referidos.seguimiento', $tokenRow->token)
                 ->with('error', 'Formulario cerrado. Solo seguimiento disponible.');
         }
@@ -628,6 +628,9 @@ class PublicReferidosController extends Controller
         if ($tokenRow->es_consulta) {
             return response()->json(['results' => []]);
         }
+        if (!$this->tokenElectionIsActive($tokenRow)) {
+            return response()->json(['results' => []]);
+        }
 
         $data = $request->validate([
             'puesto_id' => ['required', 'integer', 'exists:eleccion_puestos,id'],
@@ -678,6 +681,9 @@ class PublicReferidosController extends Controller
         if ($tokenRow->es_consulta) {
             return response()->json(['results' => []]);
         }
+        if (!$this->tokenElectionIsActive($tokenRow)) {
+            return response()->json(['results' => []]);
+        }
         $search = trim((string) $request->get('q', ''));
 
         $query = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
@@ -703,6 +709,9 @@ class PublicReferidosController extends Controller
     {
         $tokenRow = $this->getTokenOrFail($token, true);
         if ($tokenRow->es_consulta) {
+            return response()->json(['results' => []]);
+        }
+        if (!$this->tokenElectionIsActive($tokenRow)) {
             return response()->json(['results' => []]);
         }
         $search = trim((string) $request->get('q', ''));
@@ -731,6 +740,9 @@ class PublicReferidosController extends Controller
     {
         $tokenRow = $this->getTokenOrFail($token, true);
         if ($tokenRow->es_consulta) {
+            return response()->json(['results' => []]);
+        }
+        if (!$this->tokenElectionIsActive($tokenRow)) {
             return response()->json(['results' => []]);
         }
 
@@ -790,6 +802,13 @@ class PublicReferidosController extends Controller
             abort(404);
         }
         return $tokenRow;
+    }
+
+    private function tokenElectionIsActive(TerritorioToken $tokenRow): bool
+    {
+        return Eleccion::where('id', $tokenRow->eleccion_id)
+            ->where('estado', 'activa')
+            ->exists();
     }
 
     private function normalizeName(string $value): string

@@ -3,467 +3,388 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Seller;
-use Illuminate\Http\Request;
+use App\Models\Eleccion;
+use App\Traits\EleccionScope;
 use Illuminate\Support\Facades\DB;
 
 class ConsultorController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
+    use EleccionScope;
 
+    public function index()
+    {
+        $eleccionId = $this->resolveEleccionId((int) request('eleccion_id'));
+        $metrics = $this->buildMetrics($eleccionId);
+        $eleccionOperativa = $eleccionId ? Eleccion::find($eleccionId) : null;
 
-     public function index()
-     {   
-        $role = auth()->user()->role;
-        $escrutador = auth()->user()->codzon;
-        $ruta = auth()->user()->codzon;
-        $coordinador = auth()->user()->codpuesto;
-        $mun = auth()->user()->mun;
-
-        
-
-         $okd = DB::table('sellers')
-                ->select("status")
-                ->whereStatus("1")
-                ->where('mesa','<>','Rem')
-                ->count();
-
-         
-         $nookd = DB::table('sellers')
-                     ->select("status")
-                     ->whereStatus("0")
-                     ->where('mesa','<>','Rem')
-                     ->count();
-         $remokd =DB::table('sellers')
-                     ->where('mesa','=','Rem')
-                     ->whereStatus("1")  
-                     ->count(); 
-         $remnookd =DB::table('sellers')
-                     ->where('mesa','=','Rem')
-                     ->whereStatus("0")  
-                     ->count(); 
-         // fin Departamental
-         $okv = DB::table('sellers')
-                     ->select("codmun")
-                     ->whereCodmun("001")
-                     ->whereStatus("1")
-                     ->where('mesa','<>','Rem')
-                     ->count();
-         $nookv = DB::table('sellers')
-                     ->select("status")
-                     ->where('Codmun','=','001')
-                     ->whereStatus("0")
-                     ->where('mesa','<>','Rem')
-                     ->count();
-                     
-         $remokv = DB::table('sellers')
-                     ->select("codmun")
-                     ->whereCodmun("001")
-                     ->whereStatus("1")
-                     ->where('mesa','=','Rem')
-                     ->count();
-         $remnookv = DB::table('sellers')
-                     ->select("status")
-                     ->where('Codmun','=','001')
-                     ->whereStatus("0")
-                     ->where('mesa','=','Rem')
-                     ->count();
-         // Fin villavicencio
-         $okm = DB::table('sellers')
-                     ->select("codmun")
-                     ->where('Codmun','<>','001')
-                     ->whereStatus("1")
-                     ->where('mesa','<>','Rem')
-                     ->count();
-         $nookm = DB::table('sellers')
-                     ->select("status")
-                     ->where('Codmun','<>','001')
-                     ->whereStatus("0")
-                     ->where('mesa','<>','Rem')
-                     ->count();
-         $remokm = DB::table('sellers')
-                     ->select("codmun")
-                     ->where('Codmun','<>','001')
-                     ->whereStatus("1")
-                     ->where('mesa','=','Rem')
-                     ->count();
-         $remnookm = DB::table('sellers')
-                     ->select("status")
-                     ->where('Codmun','<>','001')
-                     ->whereStatus("0")
-                     ->where('mesa','=','Rem')
-                     ->count();
-         // Fin Municipios
-         // // status ok
-         // $sok = 1;
-         // // Status nook
-         // $snook = 0;
-         $data =  DB::table('sellers')
-             ->where('codmun','=','001')
-             ->where('mesa','<>','Rem')
-             ->select('codescru', DB::raw('sum(status) as T'), DB::raw('count(*) - sum(status) as F'))
-             ->groupBy('codescru')
-             ->orderBy('codescru', 'asc')
-             ->get();
-
-                 
-         $dat =  DB::table('sellers')
-             ->where('codmun','=','001')
-             ->where('mesa','<>','Rem')
-             ->select('codescru', DB::raw('sum(status) as T'), DB::raw('count(*) - sum(status) as F'))
-             ->groupBy('codescru')
-             ->orderBy('codescru', 'asc')
-             ->get();
-
-         $not =  DB::table('sellers')
-             ->where('codmun','=','001')
-             ->where('mesa','<>','Rem')
-             ->select('codescru', DB::raw('sum(status) as T'), DB::raw('count(*) - sum(status) as F'))
-             ->groupBy('codescru')
-             ->orderBy('codescru', 'asc')
-             ->get();
-         $lablemun =  DB::table('sellers')
-             ->select('municipio', DB::raw('sum(status) as T'), DB::raw('count(*) - sum(status) as F'))
-             ->where('municipio','<>','VILLAVICENCIO')
-             ->groupBy('municipio')
-             ->get();
-         $okmun =  DB::table('sellers')
-             ->where('mesa','<>','Rem')
-             ->select('municipio', DB::raw('sum(status) as T'), DB::raw('count(*) - sum(status) as F'))
-             ->where('municipio','<>','VILLAVICENCIO')
-             ->groupBy('municipio')
-             ->get();
-         $nookmun =  DB::table('sellers')
-             ->where('mesa','<>','Rem')
-             ->select('municipio', DB::raw('sum(status) as T'), DB::raw('count(*) - sum(status) as F'))
-             ->where('municipio','<>','VILLAVICENCIO')
-             ->groupBy('municipio')
-             ->get();
-
-
-         $okaniv =  DB::table('sellers')
-                     ->where('codmun', '=' ,'001')
-                     ->whereStatusani("1")
-                     ->count();
-         $nookaniv =  DB::table('sellers')
-                     ->where('codmun', '=' ,'001')
-                     ->whereStatusani("0")
-                     ->count();
-         $okanim =  DB::table('sellers')
-                     ->where('codmun', '<>' ,'001')
-                     ->whereStatusani("1")
-                     ->count();
-         $nookanim =  DB::table('sellers')
-                     ->where('codmun', '<>' ,'001')
-                     ->whereStatusani("0")
-                     ->count();
-
-         // calcular numero de puestos 
-         $puestosd =  DB::table('sellers')
-                   
-                    ->distinct('codcor')
-                    ->count('puesto');
-         $puestosv = DB::table('sellers')
-                    ->where('codmun', '001')
-                    ->distinct('codcor')
-                    ->count('puesto');
-
-         $puestosm = DB::table('sellers')
-                    ->where('codmun', '!=', '001')
-                    ->distinct('codcor')
-                    ->count('puesto');
-
-        // $mesasok = DB::table('sellers')
-        //             ->select('codcor', 'municipio', 'puesto', 'candidato', 
-        //             DB::raw('SUM(mesa <> "Rem") as mesas'), 
-        //             DB::raw('SUM(CASE WHEN status = 1 AND mesa != "Rem" THEN 1 ELSE 0 END) as mesas_ok'),
-        //                 DB::raw('SUM(mesa = "Rem") as rem'),
-        //                 DB::raw('SUM(mesa = "Rem" AND status = 1) as rem_ok'))
-                  
-                    
-        //             ->groupBy('codcor', 'municipio', 'puesto','candidato')
-        //             ->orderBy('codcor')
-        //             ->get();    
-
-        $mesasok = DB::table('sellers')
-                ->select(
-                    'municipio',
-                    'puesto',
-
-                    // Mesas por candidato
-                    DB::raw('SUM(CASE WHEN mesa <> "Rem" AND candidato = 101 THEN 1 ELSE 0 END) AS mesas_101'),
-                    DB::raw('SUM(CASE WHEN mesa <> "Rem" AND candidato = 103 THEN 1 ELSE 0 END) AS mesas_103'),
-                    DB::raw('SUM(CASE WHEN mesa <> "Rem" AND candidato = 4   THEN 1 ELSE 0 END) AS mesas_04'),
-
-                    // Total mesas
-                    DB::raw('SUM(CASE WHEN mesa <> "Rem" THEN 1 ELSE 0 END) AS total_mesas'),
-
-                    // Mesas OK por candidato
-                    DB::raw('SUM(CASE WHEN mesa <> "Rem" AND candidato = 101 AND status = 1 THEN 1 ELSE 0 END) AS ok_101'),
-                    DB::raw('SUM(CASE WHEN mesa <> "Rem" AND candidato = 103 AND status = 1 THEN 1 ELSE 0 END) AS ok_103'),
-                    DB::raw('SUM(CASE WHEN mesa <> "Rem" AND candidato = 4   AND status = 1 THEN 1 ELSE 0 END) AS ok_04'),
-
-                    // Remanentes
-                    DB::raw('SUM(CASE WHEN mesa = "Rem" THEN 1 ELSE 0 END) AS rem'),
-                    DB::raw('SUM(CASE WHEN mesa = "Rem" AND status = 1 THEN 1 ELSE 0 END) AS rem_ok')
-                )
-                ->groupBy('municipio', 'puesto')
-                ->orderBy('municipio')
-                ->orderBy('puesto')
-                ->get();
-
-
-            
-
-            $avancePuestos = DB::table('sellers')
-                ->select(
-                    'codcor',        // 👈 IMPORTANTE
-                    'municipio',
-                    'puesto',
-            
-                    // Mesas por candidato
-                    DB::raw('SUM(CASE WHEN candidato = 101 AND mesa <> "Rem" THEN 1 ELSE 0 END) as mesas_101'),
-                    DB::raw('SUM(CASE WHEN candidato = 103 AND mesa <> "Rem" THEN 1 ELSE 0 END) as mesas_103'),
-                    DB::raw('SUM(CASE WHEN candidato = 4   AND mesa <> "Rem" THEN 1 ELSE 0 END) as mesas_04'),
-            
-                    // Mesas OK por candidato
-                    DB::raw('SUM(CASE WHEN candidato = 101 AND status = 1 AND mesa <> "Rem" THEN 1 ELSE 0 END) as ok_101'),
-                    DB::raw('SUM(CASE WHEN candidato = 103 AND status = 1 AND mesa <> "Rem" THEN 1 ELSE 0 END) as ok_103'),
-                    DB::raw('SUM(CASE WHEN candidato = 4   AND status = 1 AND mesa <> "Rem" THEN 1 ELSE 0 END) as ok_04'),
-            
-                    // Totales
-                    DB::raw('SUM(mesa <> "Rem") as total_mesas'),
-                    DB::raw('SUM(CASE WHEN status = 1 AND mesa <> "Rem" THEN 1 ELSE 0 END) as total_ok'),
-            
-                    // Remanentes
-                    DB::raw('SUM(mesa = "Rem") as rem'),
-                    DB::raw('SUM(CASE WHEN mesa = "Rem" AND status = 1 THEN 1 ELSE 0 END) as rem_ok')
-                )
-                ->groupBy('codcor', 'municipio', 'puesto')
-                ->orderBy('codcor', 'asc')    // 👈 ORDEN PRINCIPAL
-                ->orderBy('puesto')      // 👈 ORDEN SECUNDARIO
-                ->get();
-                $avanceCandidatos = DB::table('sellers')
-                                ->select(
-                                    'candidato',
-                                    DB::raw('SUM(CASE WHEN mesa <> "Rem" THEN 1 ELSE 0 END) as total_mesas'),
-                                    DB::raw('SUM(CASE WHEN mesa <> "Rem" AND status = 1 THEN 1 ELSE 0 END) as mesas_ok')
-                                )
-                                ->whereIn('candidato', [101, 4, 103])
-                                ->groupBy('candidato')
-                                ->get()
-                                ->keyBy('candidato');
-
-
-        
-
-       
-                     
-        return view('admin.consultors.index', compact('data', 'dat', 'not', 'lablemun', 'okmun', 'nookmun', 'okaniv','nookaniv', 'okanim','nookanim','remokd','remnookd','remokv','remnookv','remokm','remnookm', 'puestosd', 'puestosv' , 'puestosm', 'mesasok', 'avancePuestos','avanceCandidatos'))
-                 ->with('okd', $okd)
-                 ->with('nookd', $nookd)
-                 ->with('nookv', $nookv)
-                 ->with('okv', $okv)
-                 ->with('nookm', $nookm)
-                 ->with('okm', $okm)
-                 ->with('data', $data);
-
-     }
+        return view('admin.consultors.index', array_merge($metrics, [
+            'eleccionId' => $eleccionId,
+            'eleccionOperativa' => $eleccionOperativa,
+        ]));
+    }
 
     public function getData()
     {
-
-
-        $okd = DB::table('sellers')
-                        ->select("status")
-                        ->whereStatus("1")
-                        ->where('mesa','<>','Rem')
-                        ->count();
-
-        
-                        
-
-        $nookd = DB::table('sellers')
-                        ->select("status")
-                        ->whereStatus("0")
-                        ->where('mesa','<>','Rem')
-                        ->count();
-
-        $remokd =DB::table('sellers')
-                        ->where('mesa','=','Rem')
-                        ->whereStatus("1")  
-                        ->count(); 
-
-        $remnookd =DB::table('sellers')
-                        ->where('mesa','=','Rem')
-                        ->whereStatus("0")  
-                        ->count(); 
-
-            // fin Departamental
-        $okv = DB::table('sellers')
-                        ->select("codmun")
-                        ->whereCodmun("001")
-                        ->whereStatus("1")
-                        ->where('mesa','<>','Rem')
-                        ->count();
-
-
-        $nookv = DB::table('sellers')
-                        ->select("status")
-                        ->where('Codmun','=','001')
-                        ->whereStatus("0")
-                        ->where('mesa','<>','Rem')
-                        ->count();
-                        
-        $remokv = DB::table('sellers')
-                        ->select("codmun")
-                        ->whereCodmun("001")
-                        ->whereStatus("1")
-                        ->where('mesa','=','Rem')
-                        ->count();
-
-
-        $remnookv = DB::table('sellers')
-                        ->select("status")
-                        ->where('Codmun','=','001')
-                        ->whereStatus("0")
-                        ->where('mesa','=','Rem')
-                        ->count();
-
-            // Fin villavicencio
-
-        $okm = DB::table('sellers')
-                        ->select("codmun")
-                        ->where('Codmun','<>','001')
-                        ->whereStatus("1")
-                        ->where('mesa','<>','Rem')
-                        ->count();
-
-
-        $nookm = DB::table('sellers')
-                        ->select("status")
-                        ->where('Codmun','<>','001')
-                        ->whereStatus("0")
-                        ->where('mesa','<>','Rem')
-                        ->count();
-        $remokm = DB::table('sellers')
-                        ->select("codmun")
-                        ->where('Codmun','<>','001')
-                        ->whereStatus("1")
-                        ->where('mesa','=','Rem')
-                        ->count();
-
-
-        $remnookm = DB::table('sellers')
-                        ->select("status")
-                        ->where('Codmun','<>','001')
-                        ->whereStatus("0")
-                        ->where('mesa','=','Rem')
-                        ->count();
-
-        
-
-    
-    
-                    
-        $dat =  DB::table('sellers')
-                ->where('codmun','=','001')
-                ->where('mesa','<>','Rem')
-                ->select('codzon', DB::raw('sum(status) as T'), DB::raw('count(*) - sum(status) as F'))
-                ->groupBy('codzon')
-                ->orderBy('codzon', 'asc')
-                ->get();
-
-                $ruta = auth()->user()->codzon;
-                $mun = auth()->user()->mun;
-
-
-
-                $lablemun =  DB::table('sellers')
-                ->select('municipio', DB::raw('sum(status) as T'), DB::raw('count(*) - sum(status) as F'))
-                ->where('municipio','<>','VILLAVICENCIO')
-                ->groupBy('municipio')
-                ->get();
-                
-                
-            
-        
-        
-
-    
-
-
-        $okaniv =  DB::table('sellers')
-                        ->where('codmun', '=' ,'001')
-                        ->whereStatusani("1")
-                        ->count();
-
-        $nookaniv =  DB::table('sellers')
-                        ->where('codmun', '=' ,'001')
-                        ->whereStatusani("0")
-                        ->count();
-
-
-        $okanim =  DB::table('sellers')
-                        ->where('codmun', '<>' ,'001')
-                        ->whereStatusani("1")
-                        ->count();
-
-        $nookanim =  DB::table('sellers')
-                        ->where('codmun', '<>' ,'001')
-                        ->whereStatusani("0")
-                        ->count();
-
-        // calcular numero de puestos 
-        $puestosd = DB::table('puestos')
-                        ->where('mun','<>','3')
-                        ->count();
-        $puestosv = DB::table('puestos')
-                        ->where('mun','=','1')
-                        ->count();
-        $puestosm = DB::table('puestos')
-                        ->where('mun','=','0')
-                        ->count();
-                        
-    
-
+        $eleccionId = $this->resolveEleccionId((int) request('eleccion_id'));
+        $metrics = $this->buildMetrics($eleccionId);
 
         return response()->json([
-                'dat'=> $dat,
-            
-                'lablemun' =>$lablemun ,
-                
-                'okaniv'=>$okaniv,
-                'nookaniv'=>$nookanim,
-                'okanim'=>$okanim,
-                'nookanim'=>$nookanim,
-                'remokd'=>$remokd,
-                'remnookd'=>$remnookd,
-                'remokv'=>$remokv,
-                'remnookv'=>$remnookv,
-                'remokm'=>$remokm,
-                'remnookm'=>$remnookm,
-                'puestosd'=>$puestosd,
-                'puestosv' =>$puestosv,                  
-                'puestosm'=>$puestosm,
-                'okd' => $okd,
-                'nookd' => $nookd,
-                'nookv' => $nookv,
-                'okv' => $okv,
-                'nookm' => $nookm,
-                'okm' => $okm,
-                
-                
-            ]);
-        
-                                                    
+            'dat' => $metrics['dat'],
+            'lablemun' => $metrics['lablemun'],
+            'okaniv' => $metrics['okaniv'],
+            'nookaniv' => $metrics['nookaniv'],
+            'okanim' => $metrics['okanim'],
+            'nookanim' => $metrics['nookanim'],
+            'remokd' => $metrics['remokd'],
+            'remnookd' => $metrics['remnookd'],
+            'remokv' => $metrics['remokv'],
+            'remnookv' => $metrics['remnookv'],
+            'remokm' => $metrics['remokm'],
+            'remnookm' => $metrics['remnookm'],
+            'puestosd' => $metrics['puestosd'],
+            'puestosv' => $metrics['puestosv'],
+            'puestosm' => $metrics['puestosm'],
+            'okd' => $metrics['okd'],
+            'nookd' => $metrics['nookd'],
+            'nookv' => $metrics['nookv'],
+            'okv' => $metrics['okv'],
+            'nookm' => $metrics['nookm'],
+            'okm' => $metrics['okm'],
+        ]);
     }
 
- 
-    
+    private function buildMetrics(?int $eleccionId): array
+    {
+        $empty = collect();
+        if (!$eleccionId) {
+            return $this->emptyMetrics($empty);
+        }
 
+        $base = $this->baseMesasQuery($eleccionId);
+
+        $okd = $this->countOk(clone $base);
+        $totald = (clone $base)->count();
+        $nookd = max(0, $totald - $okd);
+
+        $villaBase = (clone $base)->where('ep.mm', '001');
+        $okv = $this->countOk(clone $villaBase);
+        $totalv = (clone $villaBase)->count();
+        $nookv = max(0, $totalv - $okv);
+
+        $munBase = (clone $base)->where('ep.mm', '<>', '001');
+        $okm = $this->countOk(clone $munBase);
+        $totalm = (clone $munBase)->count();
+        $nookm = max(0, $totalm - $okm);
+
+        $dat = (clone $base)
+            ->where('ep.mm', '001')
+            ->select('ep.zz as codzon')
+            ->selectRaw($this->okSumSql() . ' as T')
+            ->selectRaw($this->pendingSumSql() . ' as F')
+            ->groupBy('ep.zz')
+            ->orderBy('ep.zz')
+            ->get();
+
+        $data = $dat;
+        $not = $dat;
+
+        $lablemun = (clone $base)
+            ->where('ep.mm', '<>', '001')
+            ->select('ep.municipio')
+            ->selectRaw($this->okSumSql() . ' as T')
+            ->selectRaw($this->pendingSumSql() . ' as F')
+            ->groupBy('ep.municipio')
+            ->orderBy('ep.municipio')
+            ->get();
+
+        $okmun = $lablemun;
+        $nookmun = $lablemun;
+
+        $okaniv = (clone $base)
+            ->where('ep.mm', '001')
+            ->whereIn('r.estado', ['validado', 'postulado', 'acreditado'])
+            ->distinct('r.id')
+            ->count('r.id');
+        $nookaniv = (clone $base)
+            ->where('ep.mm', '001')
+            ->where(function ($q) {
+                $q->whereNull('r.estado')->orWhereNotIn('r.estado', ['validado', 'postulado', 'acreditado']);
+            })
+            ->count();
+        $okanim = (clone $base)
+            ->where('ep.mm', '<>', '001')
+            ->whereIn('r.estado', ['validado', 'postulado', 'acreditado'])
+            ->distinct('r.id')
+            ->count('r.id');
+        $nookanim = (clone $base)
+            ->where('ep.mm', '<>', '001')
+            ->where(function ($q) {
+                $q->whereNull('r.estado')->orWhereNotIn('r.estado', ['validado', 'postulado', 'acreditado']);
+            })
+            ->count();
+
+        $puestosBase = $this->basePuestosQuery($eleccionId);
+        $puestosd = (clone $puestosBase)->distinct('ep.id')->count('ep.id');
+        $puestosv = (clone $puestosBase)->where('ep.mm', '001')->distinct('ep.id')->count('ep.id');
+        $puestosm = (clone $puestosBase)->where('ep.mm', '<>', '001')->distinct('ep.id')->count('ep.id');
+
+        $remanentesStats = $this->buildRemanentesStats($eleccionId);
+        $remokd = $remanentesStats['totals']['ok'];
+        $remnookd = $remanentesStats['totals']['faltan'];
+        $remokv = $remanentesStats['villa']['ok'];
+        $remnookv = $remanentesStats['villa']['faltan'];
+        $remokm = $remanentesStats['municipios']['ok'];
+        $remnookm = $remanentesStats['municipios']['faltan'];
+
+        $avancePuestos = $this->baseMesasQuery($eleccionId, true)
+            ->selectRaw("CONCAT(ep.dd, ep.mm, ep.zz, ep.pp) as codcor")
+            ->addSelect('ep.municipio', 'ep.puesto')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 101 THEN em.id END) as mesas_101')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 103 THEN em.id END) as mesas_103')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 4 THEN em.id END) as mesas_04')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 101 AND ra.status_ok = 1 THEN em.id END) as ok_101')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 103 AND ra.status_ok = 1 THEN em.id END) as ok_103')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 4 AND ra.status_ok = 1 THEN em.id END) as ok_04')
+            ->selectRaw('COUNT(DISTINCT em.id) as total_mesas')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN ra.status_ok = 1 THEN em.id END) as total_ok')
+            ->selectRaw('0 as rem')
+            ->selectRaw('0 as rem_ok')
+            ->groupBy('ep.dd', 'ep.mm', 'ep.zz', 'ep.pp', 'ep.municipio', 'ep.puesto')
+            ->orderBy('ep.dd')
+            ->orderBy('ep.mm')
+            ->orderBy('ep.zz')
+            ->orderBy('ep.pp')
+            ->get()
+            ->map(function ($row) use ($remanentesStats) {
+                $rem = $remanentesStats['puestos'][$row->codcor] ?? ['total' => 0, 'ok' => 0];
+                $row->rem = (int) $rem['total'];
+                $row->rem_ok = (int) $rem['ok'];
+                return $row;
+            });
+
+        $mesasok = $avancePuestos;
+
+        $avanceCandidatos = $this->baseMesasQuery($eleccionId, true)
+            ->whereIn('c.codigo', [101, 4, 103])
+            ->select('c.codigo as candidato')
+            ->selectRaw('COUNT(DISTINCT em.id) as total_mesas')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN ra.status_ok = 1 THEN em.id END) as mesas_ok')
+            ->groupBy('c.codigo')
+            ->get()
+            ->keyBy('candidato');
+
+        return compact(
+            'data',
+            'dat',
+            'not',
+            'lablemun',
+            'okmun',
+            'nookmun',
+            'okaniv',
+            'nookaniv',
+            'okanim',
+            'nookanim',
+            'puestosd',
+            'puestosv',
+            'puestosm',
+            'mesasok',
+            'avancePuestos',
+            'avanceCandidatos',
+            'okd',
+            'nookd',
+            'okv',
+            'nookv',
+            'okm',
+            'nookm',
+            'remokd',
+            'remnookd',
+            'remokv',
+            'remnookv',
+            'remokm',
+            'remnookm'
+        );
+    }
+
+    private function baseMesasQuery(int $eleccionId, bool $withCandidates = false)
+    {
+        $user = auth()->user();
+        $referidoAgg = DB::table('referidos')
+            ->where('eleccion_id', $eleccionId)
+            ->whereNotNull('mesa_num')
+            ->where('mesa_num', '>', 0)
+            ->select('eleccion_puesto_id', 'mesa_num')
+            ->selectRaw("MAX(CASE WHEN estado IN ('validado', 'postulado', 'acreditado') THEN 1 ELSE 0 END) as status_ok")
+            ->selectRaw("COALESCE(MAX(CASE WHEN estado <> 'rechazado' THEN id END), MAX(id)) as best_referido_id")
+            ->groupBy('eleccion_puesto_id', 'mesa_num');
+
+        $query = DB::table('eleccion_mesas as em')
+            ->join('eleccion_puestos as ep', 'ep.id', '=', 'em.eleccion_puesto_id')
+            ->leftJoinSub($referidoAgg, 'ra', function ($join) {
+                $join->on('ra.eleccion_puesto_id', '=', 'em.eleccion_puesto_id')
+                    ->on('ra.mesa_num', '=', 'em.mesa_num');
+            })
+            ->leftJoin('referidos as r', 'r.id', '=', 'ra.best_referido_id')
+            ->where('em.eleccion_id', $eleccionId);
+
+        if ($withCandidates) {
+            $query->leftJoin('eleccion_mesa_candidatos as emc', 'emc.eleccion_mesa_id', '=', 'em.id')
+                ->leftJoin('candidatos as c', 'c.id', '=', 'emc.candidato_id');
+        }
+
+        $this->applyEleccionScope($query, $eleccionId, 'ep');
+        if ($user) {
+            $this->applyUserGeoScope($query, $user, 'ep');
+            $this->applyCandidateScope($query, $user, 'em', $eleccionId);
+        }
+
+        return $query;
+    }
+
+    private function basePuestosQuery(int $eleccionId)
+    {
+        $user = auth()->user();
+        $query = DB::table('eleccion_puestos as ep')
+            ->where('ep.eleccion_id', $eleccionId);
+
+        $this->applyEleccionScope($query, $eleccionId, 'ep');
+        if ($user) {
+            $this->applyUserGeoScope($query, $user, 'ep');
+        }
+
+        return $query;
+    }
+
+    private function buildRemanentesStats(int $eleccionId): array
+    {
+        $puestos = $this->basePuestosQuery($eleccionId)
+            ->select([
+                'ep.id',
+                'ep.dd',
+                'ep.mm',
+                'ep.zz',
+                'ep.pp',
+                'ep.codigo_puesto',
+                'ep.mesas_total',
+            ])
+            ->get();
+
+        $coordinaciones = DB::table('abogado_coordinaciones')
+            ->where('eleccion_id', $eleccionId)
+            ->whereNull('released_at')
+            ->select('codpuesto')
+            ->selectRaw('COUNT(*) as ocupados')
+            ->selectRaw("SUM(CASE WHEN validacion_estado = 'validado' THEN 1 ELSE 0 END) as ok")
+            ->groupBy('codpuesto')
+            ->get()
+            ->keyBy('codpuesto');
+
+        $stats = [
+            'puestos' => [],
+            'totals' => ['total' => 0, 'ok' => 0, 'faltan' => 0],
+            'villa' => ['total' => 0, 'ok' => 0, 'faltan' => 0],
+            'municipios' => ['total' => 0, 'ok' => 0, 'faltan' => 0],
+        ];
+
+        foreach ($puestos as $puesto) {
+            $totalRem = $this->remanentesPermitidosPorPuesto((int) ($puesto->mesas_total ?? 0));
+            $codcor = $this->puestoCodcor($puesto);
+            $coord = null;
+            foreach ($this->puestoCoordinacionKeys($puesto) as $key) {
+                if ($coordinaciones->has($key)) {
+                    $coord = $coordinaciones->get($key);
+                    break;
+                }
+            }
+            $ok = min($totalRem, (int) ($coord->ok ?? 0));
+            $faltan = max(0, $totalRem - $ok);
+
+            $stats['puestos'][$codcor] = [
+                'total' => $totalRem,
+                'ok' => $ok,
+                'faltan' => $faltan,
+            ];
+
+            $bucket = $puesto->mm === '001' ? 'villa' : 'municipios';
+            foreach (['totals', $bucket] as $key) {
+                $stats[$key]['total'] += $totalRem;
+                $stats[$key]['ok'] += $ok;
+                $stats[$key]['faltan'] += $faltan;
+            }
+        }
+
+        return $stats;
+    }
+
+    private function remanentesPermitidosPorPuesto(int $totalMesas): int
+    {
+        if ($totalMesas <= 0) {
+            return 0;
+        }
+
+        return $totalMesas < 10 ? 1 : (int) ceil($totalMesas * 0.10);
+    }
+
+    private function puestoCodcor(object $puesto): string
+    {
+        return (string) ($puesto->dd ?? '') . (string) ($puesto->mm ?? '') . (string) ($puesto->zz ?? '') . (string) ($puesto->pp ?? '');
+    }
+
+    private function puestoCoordinacionKeys(object $puesto): array
+    {
+        $codigo = trim((string) ($puesto->codigo_puesto ?? ''));
+        return array_values(array_unique(array_filter([
+            $codigo,
+            $this->puestoCodcor($puesto),
+            trim((string) ($puesto->pp ?? '')),
+        ])));
+    }
+
+    private function countOk($query): int
+    {
+        return (int) $query->where('ra.status_ok', 1)->count();
+    }
+
+    private function okSumSql(): string
+    {
+        return 'SUM(CASE WHEN ra.status_ok = 1 THEN 1 ELSE 0 END)';
+    }
+
+    private function pendingSumSql(): string
+    {
+        return 'SUM(CASE WHEN ra.status_ok = 1 THEN 0 ELSE 1 END)';
+    }
+
+    private function emptyMetrics($empty): array
+    {
+        return [
+            'data' => $empty,
+            'dat' => $empty,
+            'not' => $empty,
+            'lablemun' => $empty,
+            'okmun' => $empty,
+            'nookmun' => $empty,
+            'okaniv' => 0,
+            'nookaniv' => 0,
+            'okanim' => 0,
+            'nookanim' => 0,
+            'remokd' => 0,
+            'remnookd' => 0,
+            'remokv' => 0,
+            'remnookv' => 0,
+            'remokm' => 0,
+            'remnookm' => 0,
+            'puestosd' => 0,
+            'puestosv' => 0,
+            'puestosm' => 0,
+            'mesasok' => $empty,
+            'avancePuestos' => $empty,
+            'avanceCandidatos' => $empty,
+            'okd' => 0,
+            'nookd' => 0,
+            'okv' => 0,
+            'nookv' => 0,
+            'okm' => 0,
+            'nookm' => 0,
+        ];
+    }
 }

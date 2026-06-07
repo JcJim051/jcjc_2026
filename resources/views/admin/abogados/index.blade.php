@@ -13,6 +13,16 @@
     @if (session('info'))
         <div class="alert alert-success"><strong>{{ session('info') }}</strong></div>
     @endif
+    @if (session('coordinadores_import_errors'))
+        <div class="alert alert-warning">
+            <strong>Filas para revisar:</strong>
+            <ul class="mb-0 mt-2">
+                @foreach(session('coordinadores_import_errors') as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
     @if ($errors->any())
         <div class="alert alert-danger">
             <ul class="mb-0">
@@ -46,6 +56,48 @@
                     </div>
                 </div>
                 <small class="text-muted">Usa URL o CSV. Si el servidor no sale a Google, sube CSV exportado.</small>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header bg-info">
+            <strong>Importar coordinadores por elección</strong>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ route('admin.abogados.import_coordinadores') }}" enctype="multipart/form-data">
+                @csrf
+                <div class="row">
+                    <div class="col-md-3 form-group">
+                        <label>Elección activa</label>
+                        <select name="eleccion_id" class="form-control" required>
+                            <option value="">Seleccione...</option>
+                            @foreach(($elecciones ?? collect()) as $e)
+                                <option value="{{ $e->id }}" {{ (string) old('eleccion_id', $eleccionActiva ?? '') === (string) $e->id ? 'selected' : '' }}>
+                                    #{{ $e->id }} - {{ $e->nombre }} {{ $e->tipo ? '(' . $e->tipo . ')' : '' }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-3 form-group">
+                        <label>Excel / CSV</label>
+                        <input type="file" name="archivo" class="form-control-file" accept=".xlsx,.xls,.csv,.txt">
+                    </div>
+                    <div class="col-md-4 form-group">
+                        <label>URL Google Sheet (opcional)</label>
+                        <input type="url" name="spreadsheet_url" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/...">
+                    </div>
+                    <div class="col-md-1 form-group">
+                        <label>GID</label>
+                        <input type="text" name="gid" class="form-control" placeholder="0">
+                    </div>
+                    <div class="col-md-1 form-group d-flex align-items-end">
+                        <button type="submit" class="btn btn-info w-100">Cargar</button>
+                    </div>
+                </div>
+                <small class="text-muted">
+                    Columnas esperadas: NOMBRE, CORREO, CEDULA, DIR, PUESTO, OBSERVACION. El sistema busca el abogado por cédula, ubica el puesto en la DIVIPOL de la elección y valida cupos remanentes.
+                </small>
             </form>
         </div>
     </div>

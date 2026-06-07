@@ -10,19 +10,22 @@ use App\Models\TerritorioToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use App\Traits\EleccionScope;
 
 class TerritorioTokensController extends Controller
 {
-    public function index()
-    {
-        [$elecciones, $tokens] = $this->buildTokensDataset();
+    use EleccionScope;
 
-        return view('admin.territorio_tokens.index', compact('elecciones', 'tokens'));
+    public function index(Request $request)
+    {
+        [$elecciones, $tokens, $eleccionId] = $this->buildTokensDataset((int) $request->get('eleccion_id'));
+
+        return view('admin.territorio_tokens.index', compact('elecciones', 'tokens', 'eleccionId'));
     }
 
-    public function export()
+    public function export(Request $request)
     {
-        [, $tokens] = $this->buildTokensDataset();
+        [, $tokens] = $this->buildTokensDataset((int) $request->get('eleccion_id'));
 
         $fileName = 'tokens_territoriales_' . now()->format('Ymd_His') . '.csv';
         $headers = [
@@ -89,10 +92,14 @@ class TerritorioTokensController extends Controller
         }, $fileName, $headers);
     }
 
-    private function buildTokensDataset(): array
+    private function buildTokensDataset(?int $requestedEleccionId = null): array
     {
+        $eleccionId = $this->resolveEleccionId($requestedEleccionId);
         $elecciones = Eleccion::orderByDesc('id')->get();
-        $tokens = TerritorioToken::orderByDesc('id')->get();
+        $tokens = TerritorioToken::query()
+            ->when($eleccionId, fn ($q) => $q->where('eleccion_id', $eleccionId))
+            ->orderByDesc('id')
+            ->get();
         $eleccionesMap = $elecciones->keyBy('id');
 
         $municipiosMap = EleccionPuesto::query()
@@ -189,7 +196,7 @@ class TerritorioTokensController extends Controller
             return $t;
         });
 
-        return [$elecciones, $tokens];
+        return [$elecciones, $tokens, $eleccionId];
     }
 
     public function municipios(Request $request)

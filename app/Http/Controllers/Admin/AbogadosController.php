@@ -7,19 +7,27 @@ use App\Models\Abogado;
 use App\Models\AbogadoCoordinacion;
 use App\Models\Eleccion;
 use App\Models\Puestos;
-use App\Models\Seller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
+use App\Traits\EleccionScope;
 
 class AbogadosController extends Controller
 {
+    use EleccionScope;
+
     public function index()
     {
         $abogados = Abogado::orderByDesc('activo')->orderBy('nombre')->get();
-        return view('admin.abogados.index', compact('abogados'));
+        $elecciones = Eleccion::query()
+            ->where('estado', 'activa')
+            ->orderByDesc('id')
+            ->get(['id', 'nombre', 'tipo', 'estado']);
+        $eleccionActiva = $this->resolveEleccionId();
+
+        return view('admin.abogados.index', compact('abogados', 'elecciones', 'eleccionActiva'));
     }
 
     public function create()
@@ -82,49 +90,60 @@ class AbogadosController extends Controller
         $puestosMunicipio = collect();
 
         if ($municipioVota) {
-            $puestosMunicipio = Puestos::query()
-                ->where('mun', $municipioVota)
-                ->orderBy('codpuesto')
-                ->orderBy('nombre')
+            $eleccionActivaId = $this->resolveEleccionId();
+            $puestosMunicipio = DB::table('eleccion_puestos')
+                ->where('eleccion_id', $eleccionActivaId)
+                ->whereRaw('UPPER(TRIM(municipio)) = ?', [mb_strtoupper(trim((string) $municipioVota), 'UTF-8')])
+                ->orderBy('dd')
+                ->orderBy('mm')
+                ->orderBy('zz')
+                ->orderBy('pp')
                 ->get()
-                ->map(function ($p) use ($puestoVota) {
-                    $totalRem = Seller::where('codcor', $p->codpuesto)->where('mesa', 'Rem')->count();
-                    $ocupadosRem = Seller::where('codcor', $p->codpuesto)
-                        ->where('mesa', 'Rem')
-                        ->where(function ($q) {
-                            $q->whereNotNull('cedula')->where('cedula', '<>', '')
-                              ->orWhere(function ($q2) {
-                                  $q2->whereNotNull('nombre')->where('nombre', '<>', '');
-                              });
-                        })
+                ->map(function ($p) use ($puestoVota, $eleccionActivaId) {
+                    $codpuesto = $this->buildEleccionPuestoKey($p);
+                    $totalRem = $this->getRemanentesPermitidos((int) $eleccionActivaId, $codpuesto);
+                    $ocupadosRem = AbogadoCoordinacion::where('eleccion_id', $eleccionActivaId)
+                        ->where('codpuesto', $codpuesto)
+                        ->whereNull('released_at')
                         ->count();
 
                     return (object) [
-                        'codpuesto' => $p->codpuesto,
-                        'label' => trim(($p->mun ?? '') . ' - ' . ($p->nombre ?? ''), ' -'),
+                        'codpuesto' => $codpuesto,
+                        'label' => trim(($p->municipio ?? '') . ' - ' . ($p->puesto ?? ''), ' -'),
                         'total_rem' => $totalRem,
                         'ocupados_rem' => $ocupadosRem,
                         'disponibles_rem' => max(0, $totalRem - $ocupadosRem),
-                        'es_puesto_vota' => mb_strtoupper(trim((string) $p->nombre)) === mb_strtoupper(trim((string) $puestoVota)),
+                        'es_puesto_vota' => mb_strtoupper(trim((string) $p->puesto), 'UTF-8') === mb_strtoupper(trim((string) $puestoVota), 'UTF-8'),
                     ];
                 })
                 ->values();
         }
 
-        $elecciones = Eleccion::query()->orderByDesc('id')->get(['id', 'nombre', 'tipo', 'estado']);
-        $eleccionActiva = Eleccion::where('estado', 'activa')->max('id');
+        $elecciones = Eleccion::query()
+            ->where('estado', 'activa')
+            ->orderByDesc('id')
+            ->get(['id', 'nombre', 'tipo', 'estado']);
+        $eleccionActiva = $this->resolveEleccionId();
         $historialCoordinaciones = AbogadoCoordinacion::query()
             ->from('abogado_coordinaciones as ac')
             ->leftJoin('elecciones as e', 'e.id', '=', 'ac.eleccion_id')
             ->leftJoin('puestos as p', 'p.codpuesto', '=', 'ac.codpuesto')
+            ->leftJoin('eleccion_puestos as ep', function ($join) {
+                $join->on('ep.eleccion_id', '=', 'ac.eleccion_id')
+                    ->where(function ($q) {
+                        $q->whereColumn('ep.codigo_puesto', 'ac.codpuesto')
+                            ->orWhereRaw('CONCAT(ep.dd,ep.mm,ep.zz,ep.pp) = ac.codpuesto')
+                            ->orWhereColumn('ep.pp', 'ac.codpuesto');
+                    });
+            })
             ->where('ac.abogado_id', $abogado->id)
             ->orderByDesc('ac.assigned_at')
             ->select(
                 'ac.*',
                 'e.nombre as eleccion_nombre',
                 'e.tipo as eleccion_tipo',
-                'p.mun as puesto_municipio',
-                'p.nombre as puesto_nombre'
+                DB::raw('COALESCE(ep.municipio, p.mun) as puesto_municipio'),
+                DB::raw('COALESCE(ep.puesto, p.nombre) as puesto_nombre')
             )
             ->get();
 
@@ -304,19 +323,30 @@ class AbogadosController extends Controller
     public function asignarCoordinador(Request $request, Abogado $abogado)
     {
         $data = $request->validate([
-            'codpuesto' => 'required|string|exists:puestos,codpuesto',
+            'codpuesto' => 'required|string',
             'eleccion_id' => 'required|integer|exists:elecciones,id',
         ]);
 
-        [$municipioVota] = $this->splitPuestoTexto($abogado->puesto);
-        $puesto = Puestos::where('codpuesto', $data['codpuesto'])->firstOrFail();
+        $eleccion = Eleccion::where('id', $data['eleccion_id'])
+            ->where('estado', 'activa')
+            ->first();
+        if (!$eleccion) {
+            return back()->withErrors(['eleccion_id' => 'Solo puedes asignar coordinadores en una elección activa.']);
+        }
 
-        if ($municipioVota && mb_strtoupper(trim((string) $puesto->mun)) !== mb_strtoupper(trim((string) $municipioVota))) {
+        [$municipioVota] = $this->splitPuestoTexto($abogado->puesto);
+        $puesto = $this->findEleccionPuestoByCodigo((int) $data['eleccion_id'], (string) $data['codpuesto']);
+        if (!$puesto) {
+            return back()->withErrors(['codpuesto' => 'El puesto seleccionado no existe en la DIVIPOL de la elección activa.']);
+        }
+
+        if ($municipioVota && mb_strtoupper(trim((string) $puesto->municipio), 'UTF-8') !== mb_strtoupper(trim((string) $municipioVota), 'UTF-8')) {
             return back()->withErrors(['codpuesto' => 'Solo puedes asignar en el municipio donde vota.']);
         }
 
         try {
             DB::transaction(function () use ($abogado, $puesto, $data) {
+                $codpuesto = $this->buildEleccionPuestoKey($puesto);
                 $yaAsignado = AbogadoCoordinacion::where('abogado_id', $abogado->id)
                     ->where('eleccion_id', $data['eleccion_id'])
                     ->whereNull('released_at')
@@ -325,33 +355,22 @@ class AbogadosController extends Controller
                     throw new \RuntimeException('Esta persona ya tiene una coordinación activa en esta elección.');
                 }
 
-                $slot = Seller::where('codcor', $puesto->codpuesto)
-                    ->where('mesa', 'Rem')
-                    ->where(function ($q) {
-                        $q->whereNull('cedula')->orWhere('cedula', '');
-                    })
+                $totalRem = $this->getRemanentesPermitidos((int) $data['eleccion_id'], $codpuesto);
+                $ocupadosRem = AbogadoCoordinacion::where('eleccion_id', $data['eleccion_id'])
+                    ->where('codpuesto', $codpuesto)
+                    ->whereNull('released_at')
                     ->lockForUpdate()
-                    ->first();
+                    ->count();
 
-                if (!$slot) {
+                if ($totalRem <= 0 || $ocupadosRem >= $totalRem) {
                     throw new \RuntimeException('No hay cupos remanentes disponibles en este puesto.');
                 }
-
-                $slot->update([
-                    'cedula' => $abogado->cc,
-                    'nombre' => $abogado->nombre,
-                    'email' => $abogado->correo,
-                    'telefono' => $abogado->telefono,
-                    'statusasistencia' => 0,
-                    'status' => 0,
-                    'observacion' => trim(($slot->observacion ? $slot->observacion.' | ' : '').'Asignado desde caracterización abogados'),
-                ]);
 
                 AbogadoCoordinacion::create([
                     'abogado_id' => $abogado->id,
                     'eleccion_id' => $data['eleccion_id'],
-                    'codpuesto' => $puesto->codpuesto,
-                    'seller_id' => $slot->id,
+                    'codpuesto' => $codpuesto,
+                    'seller_id' => null,
                     'assigned_by' => auth()->id(),
                     'assigned_at' => Carbon::now('America/Bogota'),
                     'validacion_estado' => 'asignado',
@@ -363,6 +382,337 @@ class AbogadosController extends Controller
         }
 
         return back()->with('info', 'Coordinador asignado correctamente a cupo remanente.');
+    }
+
+    public function importCoordinadores(Request $request)
+    {
+        $data = $request->validate([
+            'eleccion_id' => 'required|integer|exists:elecciones,id',
+            'archivo' => 'nullable|file|mimes:xlsx,xls,csv,txt|max:10240',
+            'spreadsheet_url' => 'nullable|url',
+            'gid' => 'nullable|string|max:50',
+        ]);
+
+        if (!$request->hasFile('archivo') && empty($data['spreadsheet_url'])) {
+            return back()->withErrors(['archivo' => 'Debes subir Excel/CSV o enviar URL de Google Sheets.']);
+        }
+
+        $eleccion = Eleccion::where('id', $data['eleccion_id'])
+            ->where('estado', 'activa')
+            ->first();
+        if (!$eleccion) {
+            return back()->withErrors(['eleccion_id' => 'Solo puedes importar coordinadores en una elección activa.']);
+        }
+
+        try {
+            $rows = $request->hasFile('archivo')
+                ? $this->rowsFromUploadedFile($request->file('archivo'))
+                : $this->rowsFromGoogleSheet((string) $data['spreadsheet_url'], (string) ($data['gid'] ?? '0'));
+        } catch (\Throwable $e) {
+            return back()->withErrors(['archivo' => 'No se pudo leer el archivo: ' . $e->getMessage()]);
+        }
+
+        if (count($rows) < 2) {
+            return back()->withErrors(['archivo' => 'El archivo no tiene datos para importar.']);
+        }
+
+        $headerRowIndex = $this->findHeaderRowIndex($rows, ['cedula', 'puesto']);
+        if ($headerRowIndex === null) {
+            return back()->withErrors(['archivo' => 'No encontré encabezados válidos. Debe incluir al menos CEDULA y PUESTO.']);
+        }
+
+        $header = array_map(fn ($h) => $this->normalizeHeader((string) $h), $rows[$headerRowIndex]);
+        $idx = array_flip($header);
+
+        $createdAbogados = 0;
+        $updatedAbogados = 0;
+        $createdCoordinaciones = 0;
+        $omitted = 0;
+        $errors = [];
+
+        foreach (array_slice($rows, $headerRowIndex + 1) as $offset => $row) {
+            $fila = $headerRowIndex + 2 + $offset;
+            if (count(array_filter($row, fn ($v) => trim((string) $v) !== '')) === 0) {
+                continue;
+            }
+
+            $cc = $this->digitsOnly($this->valueByAliases($row, $idx, ['cedula', 'cc', 'documento', 'documento_de_identificacion']));
+            $nombre = trim((string) $this->valueByAliases($row, $idx, ['nombre', 'nombre_completo']));
+            $puestoTexto = trim((string) $this->valueByAliases($row, $idx, ['puesto', 'puesto_de_votacion', 'puesto_votacion']));
+
+            if ($cc === '' || $nombre === '' || $puestoTexto === '') {
+                $errors[] = "Fila {$fila}: falta nombre, cédula o puesto.";
+                continue;
+            }
+
+            $puesto = $this->findEleccionPuestoByTexto((int) $eleccion->id, $puestoTexto);
+            if (!$puesto) {
+                $errors[] = "Fila {$fila}: puesto no encontrado o ambiguo \"{$puestoTexto}\".";
+                continue;
+            }
+
+            $codpuesto = $this->buildEleccionPuestoKey($puesto);
+
+            try {
+                DB::transaction(function () use (
+                    $row,
+                    $idx,
+                    $eleccion,
+                    $cc,
+                    $nombre,
+                    $puesto,
+                    $codpuesto,
+                    $puestoTexto,
+                    &$createdAbogados,
+                    &$updatedAbogados,
+                    &$createdCoordinaciones,
+                    &$omitted
+                ) {
+                    $abogado = Abogado::where('cc', $cc)->lockForUpdate()->first();
+                    $payload = [
+                        'nombre' => $nombre,
+                        'cc' => $cc,
+                        'correo' => trim((string) $this->valueByAliases($row, $idx, ['correo', 'email'])) ?: ($cc . '@sin-correo.local'),
+                        'direccion' => trim((string) $this->valueByAliases($row, $idx, ['dir', 'direccion', 'direccion_de_residencia'])) ?: 'N/D',
+                        'telefono' => trim((string) $this->valueByAliases($row, $idx, ['telefono', 'celular', 'telefono_celular'])) ?: 'N/D',
+                        'comuna' => trim((string) ($puesto->comuna ?? 'N/D')) ?: 'N/D',
+                        'puesto' => trim(($puesto->municipio ?? '') . ' - ' . ($puesto->puesto ?? $puestoTexto), ' -'),
+                        'mesa' => 'Rem',
+                        'observacion' => trim((string) $this->valueByAliases($row, $idx, ['observacion', 'obs'])) ?: null,
+                        'activo' => true,
+                    ];
+
+                    if ($abogado) {
+                        $abogado->fill($payload)->save();
+                        $updatedAbogados++;
+                    } else {
+                        $abogado = Abogado::create($payload);
+                        $createdAbogados++;
+                    }
+
+                    $existing = AbogadoCoordinacion::where('abogado_id', $abogado->id)
+                        ->where('eleccion_id', $eleccion->id)
+                        ->whereNull('released_at')
+                        ->lockForUpdate()
+                        ->first();
+
+                    if ($existing) {
+                        if ((string) $existing->codpuesto === (string) $codpuesto) {
+                            $omitted++;
+                            return;
+                        }
+
+                        throw new \RuntimeException('ya tiene otra coordinación activa en esta elección');
+                    }
+
+                    $totalRem = $this->getRemanentesPermitidos((int) $eleccion->id, $codpuesto);
+                    $ocupadosRem = AbogadoCoordinacion::where('eleccion_id', $eleccion->id)
+                        ->where('codpuesto', $codpuesto)
+                        ->whereNull('released_at')
+                        ->lockForUpdate()
+                        ->count();
+
+                    if ($totalRem <= 0 || $ocupadosRem >= $totalRem) {
+                        throw new \RuntimeException('no hay cupo remanente disponible');
+                    }
+
+                    AbogadoCoordinacion::create([
+                        'abogado_id' => $abogado->id,
+                        'eleccion_id' => $eleccion->id,
+                        'codpuesto' => $codpuesto,
+                        'seller_id' => null,
+                        'assigned_by' => auth()->id(),
+                        'assigned_at' => Carbon::now('America/Bogota'),
+                        'validacion_estado' => 'asignado',
+                        'observacion' => 'Carga masiva coordinadores: ' . $puestoTexto,
+                    ]);
+
+                    $createdCoordinaciones++;
+                });
+            } catch (\Throwable $e) {
+                $errors[] = "Fila {$fila}: {$nombre} ({$cc}) - {$e->getMessage()}.";
+            }
+        }
+
+        $message = "Importación coordinadores: asignados {$createdCoordinaciones}. Abogados nuevos {$createdAbogados}. Actualizados {$updatedAbogados}. Omitidos {$omitted}. Errores " . count($errors) . ".";
+
+        return back()
+            ->with('info', $message)
+            ->with('coordinadores_import_errors', array_slice($errors, 0, 80));
+    }
+
+    private function buildEleccionPuestoKey(object $puesto): string
+    {
+        $codigo = trim((string) ($puesto->codigo_puesto ?? ''));
+        if ($codigo !== '') {
+            return $codigo;
+        }
+
+        return (string) ($puesto->dd ?? '') . (string) ($puesto->mm ?? '') . (string) ($puesto->zz ?? '') . (string) ($puesto->pp ?? '');
+    }
+
+    private function findEleccionPuestoByCodigo(int $eleccionId, string $codpuesto): ?object
+    {
+        return DB::table('eleccion_puestos')
+            ->where('eleccion_id', $eleccionId)
+            ->where(function ($q) use ($codpuesto) {
+                $q->where('codigo_puesto', $codpuesto)
+                    ->orWhere(DB::raw('CONCAT(dd,mm,zz,pp)'), $codpuesto)
+                    ->orWhere('pp', $codpuesto);
+            })
+            ->first();
+    }
+
+    private function getRemanentesPermitidos(int $eleccionId, string $codpuesto): int
+    {
+        if (!$eleccionId || $codpuesto === '') {
+            return 0;
+        }
+
+        $puesto = $this->findEleccionPuestoByCodigo($eleccionId, $codpuesto);
+
+        if (!$puesto) {
+            return 0;
+        }
+
+        $totalMesas = (int) DB::table('eleccion_mesas')
+            ->where('eleccion_id', $eleccionId)
+            ->where('eleccion_puesto_id', $puesto->id)
+            ->count();
+
+        if ($totalMesas <= 0) {
+            $totalMesas = (int) ($puesto->mesas_total ?? 0);
+        }
+
+        if ($totalMesas <= 0) {
+            return 0;
+        }
+
+        return $totalMesas < 10 ? 1 : (int) ceil($totalMesas * 0.10);
+    }
+
+    private function findEleccionPuestoByTexto(int $eleccionId, string $puestoTexto): ?object
+    {
+        $needle = $this->normalizeSearchText($puestoTexto);
+        if ($needle === '') {
+            return null;
+        }
+
+        $puestos = DB::table('eleccion_puestos')
+            ->where('eleccion_id', $eleccionId)
+            ->get();
+
+        $matches = [];
+        foreach ($puestos as $puesto) {
+            $codpuesto = $this->buildEleccionPuestoKey($puesto);
+            if ($needle === $this->normalizeSearchText($codpuesto)) {
+                return $puesto;
+            }
+
+            $haystack = $this->normalizeSearchText(trim(($puesto->municipio ?? '') . ' ' . ($puesto->puesto ?? '')));
+            $puestoOnly = $this->normalizeSearchText((string) ($puesto->puesto ?? ''));
+
+            $score = 0;
+            if ($needle === $puestoOnly || $needle === $haystack) {
+                $score = 100;
+            } elseif (strpos($puestoOnly, $needle) !== false || strpos($needle, $puestoOnly) !== false) {
+                $score = 92;
+            } else {
+                similar_text($needle, $puestoOnly, $similarity);
+                $score = (float) $similarity;
+                $tokensNeedle = array_filter(explode(' ', $needle));
+                $tokensPuesto = array_filter(explode(' ', $puestoOnly));
+                if (!empty($tokensNeedle) && !empty($tokensPuesto)) {
+                    $overlap = count(array_intersect($tokensNeedle, $tokensPuesto)) / count($tokensNeedle);
+                    $score = max($score, $overlap * 100);
+                }
+            }
+
+            if ($score >= 62) {
+                $matches[] = ['score' => $score, 'puesto' => $puesto];
+            }
+        }
+
+        usort($matches, fn ($a, $b) => $b['score'] <=> $a['score']);
+        if (empty($matches)) {
+            return null;
+        }
+
+        if (count($matches) > 1 && abs($matches[0]['score'] - $matches[1]['score']) < 3) {
+            return null;
+        }
+
+        return $matches[0]['puesto'];
+    }
+
+    private function rowsFromUploadedFile($file): array
+    {
+        $extension = strtolower($file->getClientOriginalExtension());
+        if (in_array($extension, ['csv', 'txt'], true)) {
+            $raw = file_get_contents($file->getRealPath());
+            return array_map('str_getcsv', preg_split("/\r\n|\n|\r/", trim((string) $raw)));
+        }
+
+        if (!class_exists('PhpOffice\\PhpSpreadsheet\\IOFactory')) {
+            throw new \RuntimeException('PhpSpreadsheet no está instalado.');
+        }
+
+        $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($file->getRealPath());
+        $reader->setReadDataOnly(true);
+        $spreadsheet = $reader->load($file->getRealPath());
+        $sheet = $spreadsheet->getSheetByName('Remanentes') ?: $spreadsheet->getActiveSheet();
+        return $sheet->toArray(null, true, true, false);
+    }
+
+    private function rowsFromGoogleSheet(string $url, string $gid = '0'): array
+    {
+        $sheetId = $this->extractSheetId($url);
+        if (!$sheetId) {
+            throw new \RuntimeException('URL de Google Sheets no válida.');
+        }
+
+        $gid = $gid !== '' ? $gid : '0';
+        $csvUrl = "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=csv&gid={$gid}";
+        $resp = Http::timeout(45)->get($csvUrl);
+        if (!$resp->ok()) {
+            throw new \RuntimeException('No se pudo descargar la hoja. Revisa permisos o sube Excel/CSV.');
+        }
+
+        return array_map('str_getcsv', preg_split("/\r\n|\n|\r/", trim((string) $resp->body())));
+    }
+
+    private function findHeaderRowIndex(array $rows, array $requiredAliases): ?int
+    {
+        foreach (array_slice($rows, 0, 20, true) as $i => $row) {
+            $header = array_map(fn ($h) => $this->normalizeHeader((string) $h), $row);
+            $found = 0;
+            foreach ($requiredAliases as $alias) {
+                if (in_array($alias, $header, true)) {
+                    $found++;
+                }
+            }
+            if ($found === count($requiredAliases)) {
+                return (int) $i;
+            }
+        }
+
+        return null;
+    }
+
+    private function digitsOnly($value): string
+    {
+        return preg_replace('/\D+/', '', (string) $value) ?? '';
+    }
+
+    private function normalizeSearchText(string $value): string
+    {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $trans = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if ($trans !== false) {
+            $value = $trans;
+        }
+        $value = preg_replace('/[^a-z0-9]+/', ' ', $value);
+        return trim(preg_replace('/\s+/', ' ', (string) $value));
     }
 
     private function splitPuestoTexto(?string $puesto): array

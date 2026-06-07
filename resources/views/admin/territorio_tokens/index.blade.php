@@ -41,7 +41,11 @@
                             <select name="eleccion_id" id="eleccion_id" class="form-control" required>
                                 <option value="">Seleccione...</option>
                                 @foreach ($elecciones as $e)
-                                    <option value="{{ $e->id }}">{{ $e->id }} - {{ $e->nombre }}</option>
+                                    @if($e->estado === 'activa')
+                                        <option value="{{ $e->id }}" {{ (int)($eleccionId ?? 0) === (int)$e->id ? 'selected' : '' }}>
+                                            {{ $e->id }} - {{ $e->nombre }}
+                                        </option>
+                                    @endif
                                 @endforeach
                             </select>
                         </div>
@@ -93,12 +97,23 @@
         <div class="card-header">
             <h3 class="card-title">Tokens existentes</h3>
             <div class="card-tools">
-                <a href="{{ route('admin.territorio_tokens.export') }}" class="btn btn-sm btn-success">
+                <a href="{{ route('admin.territorio_tokens.export', ['eleccion_id' => $eleccionId ?? null]) }}" class="btn btn-sm btn-success">
                     Descargar tabla
                 </a>
             </div>
         </div>
         <div class="card-body">
+            <form method="GET" action="{{ route('admin.territorio_tokens.index') }}" class="form-inline mb-3">
+                <label class="mr-2">Eleccion operativa:</label>
+                <select name="eleccion_id" class="form-control mr-2" onchange="this.form.submit()">
+                    @foreach($elecciones as $e)
+                        <option value="{{ $e->id }}" {{ (int)($eleccionId ?? 0) === (int)$e->id ? 'selected' : '' }}>
+                            {{ $e->id }} - {{ $e->nombre }} ({{ $e->estado }})
+                        </option>
+                    @endforeach
+                </select>
+                <noscript><button class="btn btn-primary">Filtrar</button></noscript>
+            </form>
             <table id="tokensTable" class="table table-bordered table-sm display nowrap" style="width:100%">
                 <thead>
                     <tr>

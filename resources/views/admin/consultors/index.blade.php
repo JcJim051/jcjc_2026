@@ -7,6 +7,13 @@
 
 
     <h1 style="text-align: center">Métricas</h1>
+    @if(!empty($eleccionOperativa))
+        <div class="text-center">
+            <span class="badge badge-info">
+                Elección: {{ $eleccionOperativa->nombre }}
+            </span>
+        </div>
+    @endif
 @stop
 
 @section('content')
@@ -502,7 +509,7 @@
                                     <td>{{ $row->ok_101 + $row->ok_04}}</td>
                                     <td>
                                         <span class="badge bg-success">
-                                            {{ round((($row->ok_101 + $row->ok_04) / ($row->mesas_101 + $row->mesas_04)) * 100, 1) }}%
+                                            {{ ($row->mesas_101 + $row->mesas_04) ? round((($row->ok_101 + $row->ok_04) / ($row->mesas_101 + $row->mesas_04)) * 100, 1) : 0 }}%
                                         </span>
                                     </td>
                                     
@@ -898,7 +905,7 @@
         <script>
         function actualizarGraficos() {
             $.ajax({
-                url: "{{ route('getData') }}",
+                url: "{{ route('getData', ['eleccion_id' => $eleccionId ?? null]) }}",
                 method: 'GET',
                 dataType: 'json',
                 success: function(newData) {

@@ -21,6 +21,13 @@
 
     <div class="card">
         <div class="card-body">
+            <div class="alert alert-info py-2">
+                Mostrando referidos de la eleccion operativa:
+                <strong>{{ $eleccionOperativa->nombre ?? 'N/D' }}</strong>
+                @if($eleccionOperativa)
+                    <small class="text-muted">#{{ $eleccionOperativa->id }}</small>
+                @endif
+            </div>
             <div class="mb-3 text-right">
                 <form action="{{ route('admin.referidos.asignar_postulados_masivo') }}" method="POST" style="display:inline;">
                     @csrf

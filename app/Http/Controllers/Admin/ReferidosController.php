@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Referido;
 use App\Models\Testigo;
 use App\Models\Asignacion;
+use App\Models\Eleccion;
 use App\Models\EleccionMesa;
 use App\Models\EleccionPuesto;
 use Illuminate\Http\Request;
@@ -21,10 +22,15 @@ class ReferidosController extends Controller
 
     public function index()
     {
+        $eleccionId = $this->resolveEleccionId((int) request('eleccion_id'));
+
         $referidos = DB::table('referidos as r')
             ->join('personas as p', 'p.id', '=', 'r.persona_id')
             ->join('eleccion_puestos as ep', 'ep.id', '=', 'r.eleccion_puesto_id')
             ->join('territorio_tokens as tt', 'tt.id', '=', 'r.territorio_token_id')
+            ->when($eleccionId, function ($q) use ($eleccionId) {
+                $q->where('r.eleccion_id', $eleccionId);
+            })
             ->select([
                 'r.id',
                 'r.estado',
@@ -41,7 +47,9 @@ class ReferidosController extends Controller
             ->orderByDesc('r.id')
             ->get();
 
-        return view('admin.referidos.index', compact('referidos'));
+        $eleccionOperativa = $eleccionId ? Eleccion::find($eleccionId) : null;
+
+        return view('admin.referidos.index', compact('referidos', 'eleccionId', 'eleccionOperativa'));
     }
 
     public function asignarForm(Referido $referido)

@@ -60,7 +60,7 @@ class ImportDivipolU101 extends Command
         $headerRowIndex = $this->findHeaderRowFromSheet($sheet, 40);
 
         if ($headerRowIndex === null) {
-            $this->error('No se encontro la fila de encabezados con dd/mm/zz/pp/mesas.');
+            $this->error('No se encontro la fila de encabezados con dd/mm/zz/pp/mesas o Cod Depto/Cod Mpio/Zona/Cod Puesto/Mesas.');
             return 1;
         }
 
@@ -197,10 +197,18 @@ class ImportDivipolU101 extends Command
             }
             $values = array_map([$this, 'norm'], $row);
             $joined = implode('|', $values);
-            if (strpos($joined, 'dd') !== false && strpos($joined, 'mm') !== false && strpos($joined, 'zz') !== false && strpos($joined, 'pp') !== false) {
-                if (strpos($joined, 'mesas') !== false) {
-                    return $i;
-                }
+            $hasLegacyCodes = in_array('dd', $values, true)
+                && in_array('mm', $values, true)
+                && in_array('zz', $values, true)
+                && in_array('pp', $values, true);
+
+            $hasSenadoCodes = in_array('cod depto', $values, true)
+                && in_array('cod mpio', $values, true)
+                && in_array('zona', $values, true)
+                && in_array('cod puesto', $values, true);
+
+            if (($hasLegacyCodes || $hasSenadoCodes) && in_array('mesas', $values, true)) {
+                return $i;
             }
         }
         return null;
@@ -222,14 +230,14 @@ class ImportDivipolU101 extends Command
         $map = [];
         foreach ($header as $col => $name) {
             $norm = $this->norm($name);
-            if ($norm === 'dd') $map['dd'] = $col;
-            elseif ($norm === 'mm') $map['mm'] = $col;
-            elseif ($norm === 'zz') $map['zz'] = $col;
-            elseif ($norm === 'pp') $map['pp'] = $col;
-            elseif ($norm === 'codigo de puesto' || $norm === 'codigo_puesto') $map['codigo_puesto'] = $col;
+            if ($norm === 'dd' || $norm === 'cod depto' || $norm === 'codigo departamento' || $norm === 'cod departamento') $map['dd'] = $col;
+            elseif ($norm === 'mm' || $norm === 'cod mpio' || $norm === 'codigo municipio' || $norm === 'cod municipio') $map['mm'] = $col;
+            elseif ($norm === 'zz' || $norm === 'zona') $map['zz'] = $col;
+            elseif ($norm === 'pp' || $norm === 'cod puesto') $map['pp'] = $col;
+            elseif ($norm === 'codigo de puesto' || $norm === 'codigo_puesto' || $norm === 'cod puesto') $map['codigo_puesto'] = $col;
             elseif ($norm === 'departamento') $map['departamento'] = $col;
             elseif ($norm === 'municipio') $map['municipio'] = $col;
-            elseif ($norm === 'puesto') $map['puesto'] = $col;
+            elseif ($norm === 'puesto' || $norm === 'puesto de votacion') $map['puesto'] = $col;
             elseif ($norm === 'comuna') $map['comuna'] = $col;
             elseif ($norm === 'direccion') $map['direccion'] = $col;
             elseif ($norm === 'mesas') $map['mesas'] = $col;
