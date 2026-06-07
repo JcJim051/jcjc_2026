@@ -34,8 +34,47 @@
     @endif
 
     <div class="card">
-        <div class="card-header"><strong>Importar desde Google Sheets</strong></div>
-        <div class="card-body">
+        <div class="card-body table-responsive">
+            <table class="table table-bordered table-sm" id="abogadosTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Nombre</th>
+                        <th>Teléfono</th>
+                        <th>Correo</th>
+                        <th>Activo</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($abogados as $abogado)
+                        <tr>
+                            <td>{{ $abogado->id }}</td>
+                            <td>{{ $abogado->nombre }}</td>
+                            <td>{{ $abogado->telefono ?? '-' }}</td>
+                            <td>{{ $abogado->correo ?? '-' }}</td>
+                            <td>{!! $abogado->activo ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-secondary">No</span>' !!}</td>
+                            <td>
+                                <a href="{{ route('admin.abogados.show', $abogado->id) }}" class="btn btn-success btn-sm">Ver</a>
+                                <a href="{{ route('admin.abogados.edit', $abogado->id) }}" class="btn btn-primary btn-sm">Editar</a>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card collapsed-card">
+        <div class="card-header">
+            <h3 class="card-title"><strong>Importar desde Google Sheets</strong></h3>
+            <div class="card-tools">
+                <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+        </div>
+        <div class="card-body" style="display: none;">
             <form method="POST" action="{{ route('admin.abogados.import_sheet') }}" enctype="multipart/form-data">
                 @csrf
                 <div class="row">
@@ -60,11 +99,16 @@
         </div>
     </div>
 
-    <div class="card">
+    <div class="card collapsed-card">
         <div class="card-header bg-info">
-            <strong>Importar coordinadores por elección</strong>
+            <h3 class="card-title"><strong>Importar coordinadores por elección</strong></h3>
+            <div class="card-tools">
+                <button type="button" class="btn btn-tool text-white" data-card-widget="collapse">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
         </div>
-        <div class="card-body">
+        <div class="card-body" style="display: none;">
             <form method="POST" action="{{ route('admin.abogados.import_coordinadores') }}" enctype="multipart/form-data">
                 @csrf
                 <div class="row">
@@ -99,38 +143,6 @@
                     Columnas esperadas: NOMBRE, CORREO, CEDULA, DIR, PUESTO, OBSERVACION. El sistema busca el abogado por cédula, ubica el puesto en la DIVIPOL de la elección y valida cupos remanentes.
                 </small>
             </form>
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="card-body table-responsive">
-            <table class="table table-bordered table-sm" id="abogadosTable">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Nombre</th>
-                        <th>Teléfono</th>
-                        <th>Correo</th>
-                        <th>Activo</th>
-                        <th>Acción</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($abogados as $abogado)
-                        <tr>
-                            <td>{{ $abogado->id }}</td>
-                            <td>{{ $abogado->nombre }}</td>
-                            <td>{{ $abogado->telefono ?? '-' }}</td>
-                            <td>{{ $abogado->correo ?? '-' }}</td>
-                            <td>{!! $abogado->activo ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-secondary">No</span>' !!}</td>
-                            <td>
-                                <a href="{{ route('admin.abogados.show', $abogado->id) }}" class="btn btn-success btn-sm">Ver</a>
-                                <a href="{{ route('admin.abogados.edit', $abogado->id) }}" class="btn btn-primary btn-sm">Editar</a>
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
         </div>
     </div>
 @stop
