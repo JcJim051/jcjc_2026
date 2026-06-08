@@ -89,7 +89,11 @@
             </p>
             <p class="mb-3">
                 <strong>PDF actual:</strong>
-                <a href="{{ asset('storage/' . $referido->cedula_pdf_path) }}" target="_blank">Ver PDF</a>
+                @if (!empty($referido->cedula_pdf_path))
+                    <a href="{{ asset('storage/' . $referido->cedula_pdf_path) }}" target="_blank">Ver PDF</a>
+                @else
+                    <span class="text-muted">Sin PDF cargado</span>
+                @endif
             </p>
 
             <form method="POST" action="{{ route('public.referidos.update', [$token->token, $referido->id]) }}" enctype="multipart/form-data">

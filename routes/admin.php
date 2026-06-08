@@ -149,3 +149,8 @@ Route::get('cne-import', [CneImportController::class, 'index'])->name('admin.cne
 Route::post('cne-import/postulados', [CneImportController::class, 'importarPostulados'])->name('admin.cne_import.postulados');
 Route::post('cne-import/acreditados', [CneImportController::class, 'importarAcreditados'])->name('admin.cne_import.acreditados');
 Route::get('cne-import/asignados-pendientes', [CneImportController::class, 'exportarAsignadosPendientes'])->name('admin.cne_import.asignados_pendientes');
+Route::post('cne-import/referidos-masivos/preview', [CneImportController::class, 'previewReferidosMasivos'])->name('admin.cne_import.referidos_masivos.preview');
+Route::get('cne-import/referidos-masivos/{batch}', [CneImportController::class, 'showReferidosPreview'])->name('admin.cne_import.referidos_masivos.show');
+Route::post('cne-import/referidos-masivos/{batch}/apply', [CneImportController::class, 'applyReferidosMasivos'])->name('admin.cne_import.referidos_masivos.apply');
+Route::post('cne-import/referidos-masivos/{batch}/cancel', [CneImportController::class, 'cancelReferidosMasivos'])->name('admin.cne_import.referidos_masivos.cancel');
+Route::get('cne-import/referidos-masivos/{batch}/errors', [CneImportController::class, 'downloadReferidosErrores'])->name('admin.cne_import.referidos_masivos.errors');

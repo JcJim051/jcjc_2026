@@ -11,6 +11,8 @@ class ConsultorController extends Controller
 {
     use EleccionScope;
 
+    private array $mesaOkEstados = ['asignado', 'validado', 'postulado', 'acreditado'];
+
     public function index()
     {
         $eleccionId = $this->resolveEleccionId((int) request('eleccion_id'));
@@ -102,24 +104,24 @@ class ConsultorController extends Controller
 
         $okaniv = (clone $base)
             ->where('ep.mm', '001')
-            ->whereIn('r.estado', ['validado', 'postulado', 'acreditado'])
+            ->whereIn('r.estado', $this->mesaOkEstados)
             ->distinct('r.id')
             ->count('r.id');
         $nookaniv = (clone $base)
             ->where('ep.mm', '001')
             ->where(function ($q) {
-                $q->whereNull('r.estado')->orWhereNotIn('r.estado', ['validado', 'postulado', 'acreditado']);
+                $q->whereNull('r.estado')->orWhereNotIn('r.estado', $this->mesaOkEstados);
             })
             ->count();
         $okanim = (clone $base)
             ->where('ep.mm', '<>', '001')
-            ->whereIn('r.estado', ['validado', 'postulado', 'acreditado'])
+            ->whereIn('r.estado', $this->mesaOkEstados)
             ->distinct('r.id')
             ->count('r.id');
         $nookanim = (clone $base)
             ->where('ep.mm', '<>', '001')
             ->where(function ($q) {
-                $q->whereNull('r.estado')->orWhereNotIn('r.estado', ['validado', 'postulado', 'acreditado']);
+                $q->whereNull('r.estado')->orWhereNotIn('r.estado', $this->mesaOkEstados);
             })
             ->count();
 
@@ -213,7 +215,7 @@ class ConsultorController extends Controller
             ->whereNotNull('mesa_num')
             ->where('mesa_num', '>', 0)
             ->select('eleccion_puesto_id', 'mesa_num')
-            ->selectRaw("MAX(CASE WHEN estado IN ('validado', 'postulado', 'acreditado') THEN 1 ELSE 0 END) as status_ok")
+            ->selectRaw("MAX(CASE WHEN estado IN ('asignado', 'validado', 'postulado', 'acreditado') THEN 1 ELSE 0 END) as status_ok")
             ->selectRaw("COALESCE(MAX(CASE WHEN estado <> 'rechazado' THEN id END), MAX(id)) as best_referido_id")
             ->groupBy('eleccion_puesto_id', 'mesa_num');
 
