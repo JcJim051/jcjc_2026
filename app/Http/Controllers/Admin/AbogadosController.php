@@ -561,6 +561,39 @@ class AbogadosController extends Controller
         return back()->with('info', 'Coordinador asignado correctamente a cupo remanente.');
     }
 
+    public function liberarCoordinador(Abogado $abogado, AbogadoCoordinacion $coordinacion)
+    {
+        if ((int) $coordinacion->abogado_id !== (int) $abogado->id) {
+            abort(404);
+        }
+
+        if ($coordinacion->released_at) {
+            return back()->with('info', 'Esta coordinación ya estaba liberada.');
+        }
+
+        DB::transaction(function () use ($coordinacion) {
+            $coordinacion = AbogadoCoordinacion::whereKey($coordinacion->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($coordinacion->released_at) {
+                return;
+            }
+
+            $nota = 'Liberado por ' . (optional(auth()->user())->name ?? 'administrador')
+                . ' el ' . Carbon::now('America/Bogota')->format('Y-m-d H:i');
+
+            $coordinacion->released_at = Carbon::now('America/Bogota');
+            $coordinacion->validacion_estado = 'liberado';
+            $coordinacion->observacion = trim(
+                implode(' | ', array_filter([$coordinacion->observacion, $nota]))
+            );
+            $coordinacion->save();
+        });
+
+        return back()->with('info', 'Coordinador retirado. El cupo remanente quedó disponible nuevamente.');
+    }
+
     public function importCoordinadores(Request $request)
     {
         $data = $request->validate([

@@ -175,6 +175,7 @@
                         <th>Comuna oficial</th>
                         <th>Dirección oficial</th>
                         <th>Estado</th>
+                        <th>Acción</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -192,10 +193,24 @@
                                     <span class="badge badge-success">Activo</span>
                                 @endif
                             </td>
+                            <td class="text-nowrap">
+                                @if(!$h->released_at)
+                                    <form method="POST"
+                                          action="{{ route('admin.abogados.liberar_coordinador', [$abogado->id, $h->id]) }}"
+                                          onsubmit="return confirm('¿Retirar a este coordinador y liberar el cupo remanente? El registro permanecerá en el historial.');">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="fas fa-user-minus"></i> Retirar
+                                        </button>
+                                    </form>
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="text-center text-muted">Sin historial de coordinaciones.</td>
+                            <td colspan="7" class="text-center text-muted">Sin historial de coordinaciones.</td>
                         </tr>
                     @endforelse
                 </tbody>

@@ -111,6 +111,8 @@ Route::middleware('can:Superuser')->group(function () {
 Route::resource('abogados', AbogadosController::class)->names('admin.abogados');
 Route::post('abogados/{abogado}/asignar-coordinador', [AbogadosController::class, 'asignarCoordinador'])
     ->name('admin.abogados.asignar_coordinador');
+Route::post('abogados/{abogado}/coordinaciones/{coordinacion}/liberar', [AbogadosController::class, 'liberarCoordinador'])
+    ->name('admin.abogados.liberar_coordinador');
 Route::post('abogados/import-sheet', [AbogadosController::class, 'importFromSheet'])
     ->name('admin.abogados.import_sheet');
 Route::post('abogados/import-coordinadores', [AbogadosController::class, 'importCoordinadores'])
