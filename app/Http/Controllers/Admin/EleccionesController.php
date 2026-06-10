@@ -6,6 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Eleccion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class EleccionesController extends Controller
 {
@@ -68,6 +73,99 @@ class EleccionesController extends Controller
 
         return redirect()->route('admin.elecciones.index')
             ->with('success', 'DIVIPOL importado correctamente para la eleccion ' . $eleccion->id);
+    }
+
+    public function downloadTemplate()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('DIVIPOL');
+
+        $headers = [
+            'dd',
+            'mm',
+            'zz',
+            'pp',
+            'codigo_puesto',
+            'departamento',
+            'municipio',
+            'puesto',
+            'comuna',
+            'direccion',
+            'mesas',
+        ];
+
+        $example = [
+            '50',
+            '001',
+            '01',
+            '05',
+            '500010105',
+            'META',
+            'VILLAVICENCIO',
+            'IE JUAN PABLO II SEDE CHAPINERO BAJO',
+            '01COMUNA 1',
+            'CLL 48A # 51 - 70',
+            '12',
+        ];
+
+        foreach ($headers as $columnIndex => $header) {
+            $sheet->setCellValueByColumnAndRow($columnIndex + 1, 1, $header);
+            $sheet->setCellValueExplicitByColumnAndRow(
+                $columnIndex + 1,
+                2,
+                $example[$columnIndex],
+                DataType::TYPE_STRING
+            );
+        }
+
+        $lastColumn = $sheet->getHighestColumn();
+        $sheet->getStyle("A1:{$lastColumn}1")->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
+        $sheet->getStyle("A1:{$lastColumn}1")->getFill()
+            ->setFillType(Fill::FILL_SOLID)
+            ->getStartColor()->setARGB('FF1F4E78');
+        $sheet->getStyle("A1:{$lastColumn}2")->getAlignment()
+            ->setVertical(Alignment::VERTICAL_CENTER);
+        $sheet->freezePane('A2');
+        $sheet->setAutoFilter("A1:{$lastColumn}2");
+
+        foreach (range(1, count($headers)) as $columnIndex) {
+            $sheet->getColumnDimensionByColumn($columnIndex)->setAutoSize(true);
+        }
+
+        $help = $spreadsheet->createSheet();
+        $help->setTitle('INSTRUCCIONES');
+        $helpRows = [
+            ['Campo', 'Descripción', 'Obligatorio'],
+            ['dd', 'Código DANE del departamento, conservando dos dígitos.', 'Sí'],
+            ['mm', 'Código DANE del municipio, conservando tres dígitos.', 'Sí'],
+            ['zz', 'Código de zona electoral, conservando dos dígitos.', 'Sí'],
+            ['pp', 'Código del puesto dentro de la zona, conservando dos dígitos.', 'Sí'],
+            ['codigo_puesto', 'Código completo del puesto. Si no existe, puede dejarse vacío.', 'No'],
+            ['departamento', 'Nombre oficial del departamento.', 'Sí'],
+            ['municipio', 'Nombre oficial del municipio.', 'Sí'],
+            ['puesto', 'Nombre oficial del puesto de votación.', 'Sí'],
+            ['comuna', 'Comuna, zona rural o clasificación territorial vigente para esta elección. Si no aplica, usar SIN COMUNA o ZONA RURAL.', 'Sí'],
+            ['direccion', 'Dirección oficial del puesto para esta elección.', 'Sí'],
+            ['mesas', 'Cantidad total de mesas habilitadas en el puesto.', 'Sí'],
+        ];
+        $help->fromArray($helpRows, null, 'A1');
+        $help->getStyle('A1:C1')->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
+        $help->getStyle('A1:C1')->getFill()
+            ->setFillType(Fill::FILL_SOLID)
+            ->getStartColor()->setARGB('FF1F4E78');
+        $help->getStyle('A1:C12')->getAlignment()->setWrapText(true)->setVertical(Alignment::VERTICAL_TOP);
+        $help->getColumnDimension('A')->setWidth(22);
+        $help->getColumnDimension('B')->setWidth(75);
+        $help->getColumnDimension('C')->setWidth(15);
+        $help->freezePane('A2');
+
+        $filename = 'plantilla_divipol_por_eleccion.xlsx';
+        $temporaryFile = tempnam(sys_get_temp_dir(), 'divipol_template_');
+        (new Xlsx($spreadsheet))->save($temporaryFile);
+        $spreadsheet->disconnectWorksheets();
+
+        return response()->download($temporaryFile, $filename)->deleteFileAfterSend(true);
     }
 
     public function update(Request $request, Eleccion $eleccion)

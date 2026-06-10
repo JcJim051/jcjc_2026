@@ -40,6 +40,7 @@ use App\Http\Controllers\Admin\CneImportController;
 use App\Http\Controllers\Admin\AbogadosController;
 use App\Http\Controllers\Admin\ReunionesAbogadosController;
 use App\Http\Controllers\Admin\BloqueosMesasController;
+use App\Http\Controllers\Admin\DivipolController;
 
 Route::get('', [AdminController::class, '__invoke'])->name('admin.home');
 
@@ -94,6 +95,8 @@ Route::post('admin/users/import', [UserController::class, 'import'])->name('admi
 Route::resource('users', UserController::class)->names('admin.users');
 
 Route::resource('roles', RoleController::class)->names('admin.roles');
+Route::get('abogados/exportar/excel', [AbogadosController::class, 'exportar'])
+    ->name('admin.abogados.exportar');
 Route::resource('abogados', AbogadosController::class)->names('admin.abogados');
 Route::post('abogados/{abogado}/asignar-coordinador', [AbogadosController::class, 'asignarCoordinador'])
     ->name('admin.abogados.asignar_coordinador');
@@ -111,9 +114,17 @@ Route::get('/puntos/{mun}', [App\Http\Controllers\Admin\PuestosController::class
     ->name('admin.puntos.byMunicipio');
 
 Route::get('elecciones', [EleccionesController::class, 'index'])->name('admin.elecciones.index');
+Route::get('elecciones/plantilla-divipol', [EleccionesController::class, 'downloadTemplate'])
+    ->name('admin.elecciones.divipol_template');
 Route::post('elecciones', [EleccionesController::class, 'store'])->name('admin.elecciones.store');
 Route::put('elecciones/{eleccion}', [EleccionesController::class, 'update'])->name('admin.elecciones.update');
 Route::post('elecciones/{eleccion}/import-divipol', [EleccionesController::class, 'import'])->name('admin.elecciones.import');
+
+Route::middleware('can:Superuser')->group(function () {
+    Route::get('divipol', [DivipolController::class, 'index'])->name('admin.divipol.index');
+    Route::get('divipol/{eleccion}/exportar', [DivipolController::class, 'export'])->name('admin.divipol.export');
+    Route::post('divipol/{eleccion}/actualizar', [DivipolController::class, 'update'])->name('admin.divipol.update');
+});
 
 Route::get('territorio-tokens', [TerritorioTokensController::class, 'index'])->name('admin.territorio_tokens.index');
 Route::get('territorio-tokens/export', [TerritorioTokensController::class, 'export'])->name('admin.territorio_tokens.export');

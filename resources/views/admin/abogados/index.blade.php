@@ -5,7 +5,12 @@
 @section('content_header')
     <div class="d-flex justify-content-between align-items-center">
         <h2>Caracterización de Abogados</h2>
-        <a href="{{ route('admin.abogados.create') }}" class="btn btn-primary btn-sm">Crear nuevo</a>
+        <div class="d-flex align-items-center" style="gap: 8px;">
+            <a href="{{ route('admin.abogados.exportar') }}" class="btn btn-success btn-sm">
+                <i class="fas fa-file-excel mr-1"></i> Descargar listado
+            </a>
+            <a href="{{ route('admin.abogados.create') }}" class="btn btn-primary btn-sm">Crear nuevo</a>
+        </div>
     </div>
 @stop
 

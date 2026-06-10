@@ -21,7 +21,12 @@
 
     <div class="card">
         <div class="card-header">
-            <h3 class="card-title">Crear Eleccion</h3>
+            <h3 class="card-title">Crear Elección</h3>
+            <div class="card-tools">
+                <a href="{{ route('admin.elecciones.divipol_template') }}" class="btn btn-success btn-sm">
+                    <i class="fas fa-file-excel mr-1"></i> Descargar plantilla DIVIPOL
+                </a>
+            </div>
         </div>
         <div class="card-body">
             <form action="{{ route('admin.elecciones.store') }}" method="POST" enctype="multipart/form-data">
@@ -92,8 +97,11 @@
                 <div class="row">
                     <div class="col-sm-6">
                         <div class="form-group">
-                            <label for="divipol">DIVIPOL U101 (xlsx)</label>
+                            <label for="divipol">DIVIPOL de esta elección (xlsx)</label>
                             <input type="file" name="divipol" id="divipol" class="form-control" accept=".xlsx">
+                            <small class="text-muted">
+                                Debe incluir comuna, dirección y cantidad de mesas vigentes para esta elección.
+                            </small>
                         </div>
                     </div>
                 </div>

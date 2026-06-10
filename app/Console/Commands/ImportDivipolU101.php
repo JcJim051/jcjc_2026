@@ -60,14 +60,14 @@ class ImportDivipolU101 extends Command
         $headerRowIndex = $this->findHeaderRowFromSheet($sheet, 40);
 
         if ($headerRowIndex === null) {
-            $this->error('No se encontro la fila de encabezados con dd/mm/zz/pp/mesas o Cod Depto/Cod Mpio/Zona/Cod Puesto/Mesas.');
+            $this->error('No se encontró la fila de encabezados DIVIPOL. Descarga y utiliza la plantilla oficial disponible en Elecciones.');
             return 1;
         }
 
         $header = $this->readRow($sheet, $headerRowIndex);
         $colMap = $this->buildColumnMap($header);
 
-        $required = ['dd', 'mm', 'zz', 'pp', 'mesas'];
+        $required = ['dd', 'mm', 'zz', 'pp', 'departamento', 'municipio', 'puesto', 'comuna', 'direccion', 'mesas'];
         foreach ($required as $req) {
             if (!isset($colMap[$req])) {
                 $this->error('Falta columna requerida: ' . $req);
@@ -79,7 +79,8 @@ class ImportDivipolU101 extends Command
 
         $batch = [];
         $batchSize = 1000;
-        $puestosCount = 0;
+        $puestosCreated = 0;
+        $puestosUpdated = 0;
         $mesasCount = 0;
 
         DB::beginTransaction();
@@ -125,8 +126,8 @@ class ImportDivipolU101 extends Command
                     'departamento' => $this->val($row, $colMap['departamento'] ?? null),
                     'municipio' => $this->val($row, $colMap['municipio'] ?? null),
                     'puesto' => $this->val($row, $colMap['puesto'] ?? null),
-                    'comuna' => $this->val($row, $colMap['comuna'] ?? null),
-                    'direccion' => $this->val($row, $colMap['direccion'] ?? null),
+                    'comuna' => $this->val($row, $colMap['comuna']),
+                    'direccion' => $this->val($row, $colMap['direccion']),
                     'mesas_total' => $mesasTotal,
                     'updated_at' => now(),
                 ];
@@ -144,10 +145,11 @@ class ImportDivipolU101 extends Command
                         ->where('id', $exists->id)
                         ->update($data);
                     $puestoId = $exists->id;
+                    $puestosUpdated++;
                 } else {
                     $data['created_at'] = now();
                     $puestoId = DB::table('eleccion_puestos')->insertGetId($data);
-                    $puestosCount++;
+                    $puestosCreated++;
                 }
 
                 for ($i = 1; $i <= $mesasTotal; $i++) {
@@ -181,7 +183,8 @@ class ImportDivipolU101 extends Command
             return 1;
         }
 
-        $this->info('Puestos creados/actualizados: ' . $puestosCount);
+        $this->info('Puestos creados: ' . $puestosCreated);
+        $this->info('Puestos actualizados: ' . $puestosUpdated);
         $this->info('Mesas insertadas (intento): ' . $mesasCount);
 
         return 0;

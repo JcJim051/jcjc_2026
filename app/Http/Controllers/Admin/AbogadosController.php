@@ -13,6 +13,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 use App\Traits\EleccionScope;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class AbogadosController extends Controller
 {
@@ -28,6 +33,164 @@ class AbogadosController extends Controller
         $eleccionActiva = $this->resolveEleccionId();
 
         return view('admin.abogados.index', compact('abogados', 'elecciones', 'eleccionActiva'));
+    }
+
+    public function exportar()
+    {
+        $elecciones = Eleccion::query()
+            ->orderBy('fecha')
+            ->orderBy('id')
+            ->get(['id', 'nombre', 'tipo', 'fecha']);
+
+        $abogados = Abogado::query()
+            ->orderBy('nombre')
+            ->get();
+
+        $coordinaciones = DB::table('abogado_coordinaciones as ac')
+            ->leftJoin('eleccion_puestos as ep', function ($join) {
+                $join->on('ep.eleccion_id', '=', 'ac.eleccion_id')
+                    ->where(function ($query) {
+                        $query->whereColumn('ep.codigo_puesto', 'ac.codpuesto')
+                            ->orWhereRaw('CONCAT(ep.dd, ep.mm, ep.zz, ep.pp) = ac.codpuesto')
+                            ->orWhere(function ($shortCode) {
+                                $shortCode->whereRaw('CHAR_LENGTH(ac.codpuesto) <= 2')
+                                    ->whereColumn('ep.pp', 'ac.codpuesto');
+                            });
+                    });
+            })
+            ->select(
+                'ac.abogado_id',
+                'ac.eleccion_id',
+                DB::raw("TRIM(CONCAT_WS(' - ', ep.municipio, COALESCE(ep.puesto, ac.codpuesto))) as puesto_coordinado"),
+                'ep.comuna as comuna_puesto',
+                'ep.direccion as direccion_puesto'
+            )
+            ->get()
+            ->groupBy('abogado_id');
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Abogados');
+
+        $headers = [
+            'ID',
+            'Nombre',
+            'Cédula',
+            'Correo',
+            'Teléfono',
+            'Dirección',
+            'Comuna manual del abogado',
+            'Puesto donde vota',
+            'Mesa',
+            'Estudios',
+            'Título',
+            'Experiencia',
+            'Experiencia electoral',
+            'Rol',
+            'Rol actual',
+            'Funcionario',
+            'Alcaldía',
+            'Lugar',
+            'Entidad',
+            'Secretaría',
+            'Honorarios',
+            'Disponibilidad',
+            'Fecha de inicio',
+            'Facebook',
+            'Instagram',
+            'Observación',
+            'Activo',
+        ];
+
+        foreach ($elecciones as $eleccion) {
+            $headers[] = $eleccion->nombre . ' - Puesto coordinado';
+            $headers[] = $eleccion->nombre . ' - Comuna oficial';
+            $headers[] = $eleccion->nombre . ' - Dirección oficial';
+        }
+
+        foreach ($headers as $columnIndex => $header) {
+            $sheet->setCellValueByColumnAndRow($columnIndex + 1, 1, $header);
+        }
+
+        foreach ($abogados as $rowIndex => $abogado) {
+            $row = [
+                $abogado->id,
+                $abogado->nombre,
+                $abogado->cc,
+                $abogado->correo,
+                $abogado->telefono,
+                $abogado->direccion,
+                $abogado->comuna,
+                $abogado->puesto,
+                $abogado->mesa,
+                $abogado->estudios,
+                $abogado->titulo,
+                $abogado->experiencia,
+                $abogado->electoral,
+                $abogado->rol,
+                $abogado->rol_actual,
+                $abogado->funcionario,
+                $abogado->alcaldia,
+                $abogado->lugar,
+                $abogado->entidad,
+                $abogado->secretaria,
+                $abogado->honorarios,
+                $abogado->disponibilidad,
+                $abogado->fecha_inicio,
+                $abogado->face,
+                $abogado->insta,
+                $abogado->observacion,
+                $abogado->activo ? 'Sí' : 'No',
+            ];
+
+            $coordinacionesAbogado = $coordinaciones->get($abogado->id, collect());
+
+            foreach ($elecciones as $eleccion) {
+                $participaciones = $coordinacionesAbogado->where('eleccion_id', $eleccion->id);
+
+                $row[] = $participaciones->pluck('puesto_coordinado')->filter()->unique()->implode(' | ');
+                $row[] = $participaciones->pluck('comuna_puesto')->filter()->unique()->implode(' | ');
+                $row[] = $participaciones->pluck('direccion_puesto')->filter()->unique()->implode(' | ');
+            }
+
+            foreach ($row as $columnIndex => $value) {
+                $sheet->setCellValueExplicitByColumnAndRow(
+                    $columnIndex + 1,
+                    $rowIndex + 2,
+                    (string) ($value ?? ''),
+                    DataType::TYPE_STRING
+                );
+            }
+        }
+
+        $lastColumn = $sheet->getHighestColumn();
+        $lastRow = $sheet->getHighestRow();
+        $headerRange = "A1:{$lastColumn}1";
+
+        $sheet->getStyle($headerRange)->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
+        $sheet->getStyle($headerRange)->getFill()
+            ->setFillType(Fill::FILL_SOLID)
+            ->getStartColor()->setARGB('FF1F4E78');
+        $sheet->getStyle($headerRange)->getAlignment()
+            ->setHorizontal(Alignment::HORIZONTAL_CENTER)
+            ->setVertical(Alignment::VERTICAL_CENTER);
+        $sheet->getStyle("A1:{$lastColumn}{$lastRow}")->getAlignment()
+            ->setVertical(Alignment::VERTICAL_TOP)
+            ->setWrapText(true);
+        $sheet->freezePane('A2');
+        $sheet->setAutoFilter("A1:{$lastColumn}{$lastRow}");
+        $sheet->getRowDimension(1)->setRowHeight(30);
+
+        foreach (range(1, count($headers)) as $columnIndex) {
+            $sheet->getColumnDimensionByColumn($columnIndex)->setAutoSize(true);
+        }
+
+        $filename = 'listado_abogados_por_campania_' . now()->format('Y-m-d_His') . '.xlsx';
+        $temporaryFile = tempnam(sys_get_temp_dir(), 'abogados_');
+        (new Xlsx($spreadsheet))->save($temporaryFile);
+        $spreadsheet->disconnectWorksheets();
+
+        return response()->download($temporaryFile, $filename)->deleteFileAfterSend(true);
     }
 
     public function create()
@@ -133,7 +296,10 @@ class AbogadosController extends Controller
                     ->where(function ($q) {
                         $q->whereColumn('ep.codigo_puesto', 'ac.codpuesto')
                             ->orWhereRaw('CONCAT(ep.dd,ep.mm,ep.zz,ep.pp) = ac.codpuesto')
-                            ->orWhereColumn('ep.pp', 'ac.codpuesto');
+                            ->orWhere(function ($shortCode) {
+                                $shortCode->whereRaw('CHAR_LENGTH(ac.codpuesto) <= 2')
+                                    ->whereColumn('ep.pp', 'ac.codpuesto');
+                            });
                     });
             })
             ->where('ac.abogado_id', $abogado->id)
@@ -143,7 +309,9 @@ class AbogadosController extends Controller
                 'e.nombre as eleccion_nombre',
                 'e.tipo as eleccion_tipo',
                 DB::raw('COALESCE(ep.municipio, p.mun) as puesto_municipio'),
-                DB::raw('COALESCE(ep.puesto, p.nombre) as puesto_nombre')
+                DB::raw('COALESCE(ep.puesto, p.nombre) as puesto_nombre'),
+                'ep.comuna as puesto_comuna',
+                'ep.direccion as puesto_direccion'
             )
             ->get();
 

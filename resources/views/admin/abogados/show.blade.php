@@ -172,6 +172,8 @@
                         <th>Fecha asignación</th>
                         <th>Elección</th>
                         <th>Puesto</th>
+                        <th>Comuna oficial</th>
+                        <th>Dirección oficial</th>
                         <th>Estado</th>
                     </tr>
                 </thead>
@@ -181,6 +183,8 @@
                             <td>{{ $h->assigned_at ? \Carbon\Carbon::parse($h->assigned_at)->format('Y-m-d H:i') : '-' }}</td>
                             <td>{{ $h->eleccion_nombre ?? ('Elección #' . $h->eleccion_id) }}</td>
                             <td>{{ trim(($h->puesto_municipio ?? '') . ' - ' . ($h->puesto_nombre ?? $h->codpuesto), ' -') }}</td>
+                            <td>{{ $h->puesto_comuna ?: '-' }}</td>
+                            <td>{{ $h->puesto_direccion ?: '-' }}</td>
                             <td>
                                 @if($h->released_at)
                                     <span class="badge badge-secondary">Liberado</span>
@@ -191,7 +195,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="4" class="text-center text-muted">Sin historial de coordinaciones.</td>
+                            <td colspan="6" class="text-center text-muted">Sin historial de coordinaciones.</td>
                         </tr>
                     @endforelse
                 </tbody>
