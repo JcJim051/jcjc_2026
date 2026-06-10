@@ -3,6 +3,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AsistenciaReunionController;
+use App\Http\Controllers\PublicAbogadoProfileController;
 
 /*
 |--------------------------------------------------------------------------
@@ -17,6 +18,23 @@ use App\Http\Controllers\AsistenciaReunionController;
 
 Route::get('/', function () {
     return view('welcome');
+});
+
+Route::prefix('equipo-abogados')->middleware('throttle:20,1')->group(function () {
+    Route::get('caracterizacion/{token}', [PublicAbogadoProfileController::class, 'characterizationForm'])
+        ->name('public.abogados.characterization.form');
+    Route::post('caracterizacion/{token}', [PublicAbogadoProfileController::class, 'characterizationStore'])
+        ->name('public.abogados.characterization.store');
+
+    Route::get('actualizar/{token}', [PublicAbogadoProfileController::class, 'updateIdentify'])
+        ->name('public.abogados.update.identify');
+    Route::post('actualizar/{token}/identificar', [PublicAbogadoProfileController::class, 'updateLookup'])
+        ->middleware('throttle:10,1')
+        ->name('public.abogados.update.lookup');
+    Route::get('actualizar/{token}/datos', [PublicAbogadoProfileController::class, 'updateForm'])
+        ->name('public.abogados.update.form');
+    Route::put('actualizar/{token}/datos', [PublicAbogadoProfileController::class, 'updateStore'])
+        ->name('public.abogados.update.store');
 });
 
 Route::get('referidos/{token}', [App\Http\Controllers\PublicReferidosController::class, 'form'])

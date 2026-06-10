@@ -62,6 +62,9 @@ class AbogadosController extends Controller
                 'ac.abogado_id',
                 'ac.eleccion_id',
                 DB::raw("TRIM(CONCAT_WS(' - ', ep.municipio, COALESCE(ep.puesto, ac.codpuesto))) as puesto_coordinado"),
+                'ep.mm as codigo_municipio',
+                'ep.zz as codigo_zona',
+                'ep.pp as codigo_puesto_divipol',
                 'ep.comuna as comuna_puesto',
                 'ep.direccion as direccion_puesto'
             )
@@ -104,6 +107,9 @@ class AbogadosController extends Controller
 
         foreach ($elecciones as $eleccion) {
             $headers[] = $eleccion->nombre . ' - Puesto coordinado';
+            $headers[] = $eleccion->nombre . ' - COD';
+            $headers[] = $eleccion->nombre . ' - ZON';
+            $headers[] = $eleccion->nombre . ' - PTO';
             $headers[] = $eleccion->nombre . ' - Comuna oficial';
             $headers[] = $eleccion->nombre . ' - Dirección oficial';
         }
@@ -149,6 +155,9 @@ class AbogadosController extends Controller
                 $participaciones = $coordinacionesAbogado->where('eleccion_id', $eleccion->id);
 
                 $row[] = $participaciones->pluck('puesto_coordinado')->filter()->unique()->implode(' | ');
+                $row[] = $participaciones->pluck('codigo_municipio')->filter()->unique()->implode(' | ');
+                $row[] = $participaciones->pluck('codigo_zona')->filter()->unique()->implode(' | ');
+                $row[] = $participaciones->pluck('codigo_puesto_divipol')->filter()->unique()->implode(' | ');
                 $row[] = $participaciones->pluck('comuna_puesto')->filter()->unique()->implode(' | ');
                 $row[] = $participaciones->pluck('direccion_puesto')->filter()->unique()->implode(' | ');
             }

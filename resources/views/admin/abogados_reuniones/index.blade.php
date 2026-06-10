@@ -23,7 +23,6 @@
                         <th>Hora inicio</th>
                         <th>Hora fin</th>
                         <th>Lugar</th>
-                        <th>Aforo</th>
                         <th>Panel QR</th>
                         <th></th>
                     </tr>
@@ -36,7 +35,6 @@
                             <td>{{ $reunion->hora_inicio ?? '-' }}</td>
                             <td>{{ $reunion->hora_fin ?? '-' }}</td>
                             <td>{{ $reunion->lugar ?? '-' }}</td>
-                            <td>{{ $reunion->aforo ?? '-' }}</td>
                             <td>
                                 <a href="{{ route('admin.abogados_reuniones.qr', $reunion->id) }}" class="btn btn-success btn-sm">
                                     Abrir panel
@@ -45,7 +43,7 @@
                             <td></td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="text-center">Sin reuniones.</td></tr>
+                        <tr><td colspan="7" class="text-center">Sin reuniones.</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Abogado;
 use App\Models\AsistenciaSession;
 use App\Models\Control;
-use App\Models\Puestos;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
@@ -44,18 +43,8 @@ class AsistenciaReunionController extends Controller
 
         $slot = (int) $request->query('slot');
         $hashToken = hash_hmac('sha256', $session->id.'|'.$slot, config('app.key'));
-        $puestos = Puestos::query()
-            ->orderBy('mun')
-            ->orderBy('nombre')
-            ->get(['mun', 'nombre'])
-            ->map(function ($p) {
-                return trim(($p->mun ?? '') . ' - ' . ($p->nombre ?? ''), ' -');
-            })
-            ->filter()
-            ->unique()
-            ->values();
 
-        return view('asistencia.session', compact('session', 'slot', 'hashToken', 'publicToken', 'puestos'));
+        return view('asistencia.session', compact('session', 'slot', 'hashToken', 'publicToken'));
     }
 
     public function procesarFormularioSesion(Request $request, $publicToken)
@@ -68,8 +57,7 @@ class AsistenciaReunionController extends Controller
         $request->validate([
             'cc' => 'required|string|max:40',
             'correo' => 'required|email|max:255',
-            'telefono' => 'nullable|string|max:50',
-            'puesto' => 'nullable|string|max:255',
+            'telefono' => 'required|string|max:50',
             'slot' => 'required|integer',
             'token' => 'required|string',
         ]);
@@ -81,42 +69,29 @@ class AsistenciaReunionController extends Controller
             return redirect()->back()->withErrors(['error' => 'Token inválido.']);
         }
 
-        $abogado = Abogado::where('cc', trim((string) $request->cc))->first();
+        $cedula = $this->normalizeDigits($request->cc);
+        $correo = mb_strtolower(trim((string) $request->correo));
+        $telefono = $this->normalizeDigits($request->telefono);
+
+        $abogado = Abogado::query()
+            ->whereRaw(
+                "REPLACE(REPLACE(REPLACE(REPLACE(cc, '.', ''), ',', ''), '-', ''), ' ', '') = ?",
+                [$cedula]
+            )
+            ->whereRaw('LOWER(TRIM(correo)) = ?', [$correo])
+            ->whereRaw(
+                "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(telefono, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') = ?",
+                [$telefono]
+            )
+            ->first();
 
         if (!$abogado) {
             return redirect()->back()->withErrors([
-                'error' => 'No encontramos tu registro en el equipo. Verifica tu cédula con coordinación.',
-            ]);
+                'error' => 'Los datos no coinciden con tu registro. Verifica cédula, correo y celular o comunícate con coordinación.',
+            ])->withInput();
         }
 
         $codigoAbogado = (string) $abogado->id;
-        $asistenciasPrevias = Control::where('codigo_abogado', $codigoAbogado)->count();
-        $esPrimeraAsistencia = $asistenciasPrevias === 0;
-
-        if ($esPrimeraAsistencia && $this->isMissingValue($abogado->telefono)) {
-            $telefonoIngresado = trim((string) $request->telefono);
-            if ($telefonoIngresado === '') {
-                return redirect()->back()->withErrors([
-                    'telefono' => 'Para tu primera asistencia debes registrar tu celular.',
-                ])->withInput();
-            }
-        }
-
-        // Completa automáticamente campos faltantes en caracterización (sin sobreescribir datos ya diligenciados).
-        $correoIngresado = trim((string) $request->correo);
-        $telefonoIngresado = trim((string) $request->telefono);
-        $puestoIngresado = trim((string) $request->puesto);
-
-        if ($this->isMissingValue($abogado->correo) && $correoIngresado !== '') {
-            $abogado->correo = $correoIngresado;
-        }
-        if ($this->isMissingValue($abogado->telefono) && $telefonoIngresado !== '') {
-            $abogado->telefono = $telefonoIngresado;
-        }
-        if ($this->isMissingValue($abogado->puesto) && $puestoIngresado !== '') {
-            $abogado->puesto = $puestoIngresado;
-        }
-        $abogado->save();
 
         $yaRegistrado = Control::where('asistencia_session_id', $session->id)
             ->where('codigo_abogado', $codigoAbogado)
@@ -144,12 +119,8 @@ class AsistenciaReunionController extends Controller
         return redirect()->back()->with('info', 'Asistencia registrada con éxito.');
     }
 
-    private function isMissingValue(?string $value): bool
+    private function normalizeDigits(?string $value): string
     {
-        $v = trim((string) $value);
-        if ($v === '') {
-            return true;
-        }
-        return in_array(mb_strtolower($v), ['n/d', 'nd', 'na', 'n.a.'], true);
+        return preg_replace('/\D+/', '', (string) $value) ?: '';
     }
 }

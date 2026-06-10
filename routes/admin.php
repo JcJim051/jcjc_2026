@@ -41,6 +41,7 @@ use App\Http\Controllers\Admin\AbogadosController;
 use App\Http\Controllers\Admin\ReunionesAbogadosController;
 use App\Http\Controllers\Admin\BloqueosMesasController;
 use App\Http\Controllers\Admin\DivipolController;
+use App\Http\Controllers\Admin\AbogadoAccessTokenController;
 
 Route::get('', [AdminController::class, '__invoke'])->name('admin.home');
 
@@ -97,6 +98,16 @@ Route::resource('users', UserController::class)->names('admin.users');
 Route::resource('roles', RoleController::class)->names('admin.roles');
 Route::get('abogados/exportar/excel', [AbogadosController::class, 'exportar'])
     ->name('admin.abogados.exportar');
+Route::middleware('can:Superuser')->group(function () {
+    Route::get('abogados/enlaces', [AbogadoAccessTokenController::class, 'index'])
+        ->name('admin.abogado_tokens.index');
+    Route::post('abogados/enlaces', [AbogadoAccessTokenController::class, 'store'])
+        ->name('admin.abogado_tokens.store');
+    Route::post('abogados/enlaces/{token}/toggle', [AbogadoAccessTokenController::class, 'toggle'])
+        ->name('admin.abogado_tokens.toggle');
+    Route::delete('abogados/enlaces/{token}', [AbogadoAccessTokenController::class, 'destroy'])
+        ->name('admin.abogado_tokens.destroy');
+});
 Route::resource('abogados', AbogadosController::class)->names('admin.abogados');
 Route::post('abogados/{abogado}/asignar-coordinador', [AbogadosController::class, 'asignarCoordinador'])
     ->name('admin.abogados.asignar_coordinador');

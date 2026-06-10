@@ -454,6 +454,12 @@ return [
             'can'  => 'Superuser-administrador-consultor-auditor',
         ],
         [
+            'text' => 'Enlaces temporales',
+            'route' => 'admin.abogado_tokens.index',
+            'icon' => 'fas fa-link',
+            'can'  => 'Superuser',
+        ],
+        [
             'text' => 'Reuniones',
             'route' => 'admin.abogados_reuniones.index',
             'icon' => 'fas fa-calendar-check',

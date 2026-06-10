@@ -27,21 +27,17 @@
                     </div>
                     <div class="card-body">
                         <div class="row">
-                            <div class="col-sm-3 form-group">
+                            <div class="col-sm-4 form-group">
                                 <label for="fecha">Fecha</label>
                                 <input type="date" class="form-control" id="fecha" name="fecha" value="{{ old('fecha') }}" required>
                             </div>
-                            <div class="col-sm-3 form-group">
+                            <div class="col-sm-4 form-group">
                                 <label for="hora_inicio">Hora inicio</label>
                                 <input type="time" class="form-control" id="hora_inicio" name="hora_inicio" value="{{ old('hora_inicio') }}" required>
                             </div>
-                            <div class="col-sm-3 form-group">
+                            <div class="col-sm-4 form-group">
                                 <label for="hora_fin">Hora fin</label>
                                 <input type="time" class="form-control" id="hora_fin" name="hora_fin" value="{{ old('hora_fin') }}" required>
-                            </div>
-                            <div class="col-sm-3 form-group">
-                                <label for="aforo">Aforo</label>
-                                <input class="form-control" type="text" id="aforo" name="aforo" value="{{ old('aforo') }}" placeholder="Numero de personas">
                             </div>
                         </div>
                         <div class="row">

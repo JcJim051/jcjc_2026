@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Asistencia</title>
+    <title>Asistencia Comité Electoral</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
@@ -12,7 +12,7 @@
             <div class="col-lg-7">
                 <div class="card shadow-sm">
                     <div class="card-body text-center">
-                        <h2 class="mb-2">Asistencia Reunión de Campaña</h2>
+                        <h2 class="mb-2">Asistencia Comité Electoral</h2>
                         <p class="mb-1"><strong>Lugar:</strong> {{ $session->reunion->lugar ?: 'Sin lugar' }}</p>
                         <p class="mb-1"><strong>Fecha:</strong> {{ $session->reunion->fecha ?: 'Sin fecha' }}</p>
                         <p class="mb-3"><strong>Horario:</strong> {{ $session->reunion->hora_inicio ?: '--:--' }} - {{ $session->reunion->hora_fin ?: '--:--' }}</p>
@@ -47,4 +47,3 @@
     </script>
 </body>
 </html>
-

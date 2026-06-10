@@ -34,7 +34,6 @@ class ReunionesAbogadosController extends Controller
             'hora_inicio' => 'required|date_format:H:i',
             'hora_fin' => 'required|date_format:H:i|after:hora_inicio',
             'lugar' => 'required|string|max:255',
-            'aforo' => 'nullable|string|max:50',
             'motivo' => 'nullable|string|max:255',
         ]);
 
