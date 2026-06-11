@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Traits\EleccionScope;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -22,6 +23,15 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 class AbogadosController extends Controller
 {
     use EleccionScope;
+
+    private const PERSONAL_UPDATE_FIELDS = [
+        'correo' => ['correo', 'email'],
+        'telefono' => ['telefono', 'celular', 'telefono_celular'],
+        'direccion' => ['direccion', 'dir', 'direccion_de_residencia'],
+        'observacion' => ['observacion', 'obs'],
+        'puesto' => ['puesto_donde_vota', 'puesto_de_votacion', 'puesto'],
+        'mesa' => ['mesa'],
+    ];
 
     public function index()
     {
@@ -200,6 +210,203 @@ class AbogadosController extends Controller
         $spreadsheet->disconnectWorksheets();
 
         return response()->download($temporaryFile, $filename)->deleteFileAfterSend(true);
+    }
+
+    public function previewActualizacionPersonal(Request $request)
+    {
+        $request->validate([
+            'archivo' => 'required|file|mimes:xlsx,xls,csv,txt|max:10240',
+        ]);
+
+        try {
+            $rows = $this->rowsFromUploadedFile($request->file('archivo'));
+        } catch (\Throwable $e) {
+            return back()->withErrors(['archivo' => 'No se pudo leer el archivo: ' . $e->getMessage()]);
+        }
+
+        $headerRowIndex = $this->findHeaderRowIndex($rows, ['cedula']);
+        if ($headerRowIndex === null) {
+            return back()->withErrors(['archivo' => 'El archivo debe incluir una columna Cédula.']);
+        }
+
+        $header = array_map(fn ($value) => $this->normalizeHeader((string) $value), $rows[$headerRowIndex]);
+        $idx = array_flip($header);
+        $source = [];
+        $duplicates = [];
+
+        foreach (array_slice($rows, $headerRowIndex + 1) as $offset => $row) {
+            if (count(array_filter($row, fn ($value) => trim((string) $value) !== '')) === 0) {
+                continue;
+            }
+
+            $cedula = $this->digitsOnly($this->valueByAliases($row, $idx, ['cedula', 'cc', 'documento']));
+            if ($cedula === '') {
+                continue;
+            }
+
+            if (isset($source[$cedula])) {
+                $duplicates[$cedula] = true;
+                continue;
+            }
+
+            $fields = [];
+            foreach (self::PERSONAL_UPDATE_FIELDS as $field => $aliases) {
+                $fields[$field] = trim((string) $this->valueByAliases($row, $idx, $aliases));
+            }
+
+            $source[$cedula] = [
+                'row' => $headerRowIndex + 2 + $offset,
+                'cedula' => $cedula,
+                'nombre' => trim((string) $this->valueByAliases($row, $idx, ['nombre', 'nombre_completo'])),
+                'fields' => $fields,
+            ];
+        }
+
+        $abogados = Abogado::whereIn('cc', array_keys($source))
+            ->get()
+            ->groupBy(fn ($abogado) => $this->digitsOnly($abogado->cc));
+        $coordinationLabels = $this->activeCoordinationLabels();
+        $changes = [];
+        $counts = [
+            'rows' => count($source),
+            'safe' => 0,
+            'conflicts' => 0,
+            'not_found' => 0,
+            'duplicates' => count($duplicates),
+        ];
+
+        foreach ($source as $cedula => $item) {
+            if (isset($duplicates[$cedula])) {
+                $changes[] = $this->personalChangeRow($item, null, null, null, 'duplicado', 'La cédula aparece más de una vez en el archivo.');
+                continue;
+            }
+
+            $matches = $abogados->get($cedula, collect());
+            if ($matches->count() !== 1) {
+                $counts['not_found']++;
+                $message = $matches->isEmpty()
+                    ? 'La cédula no existe en la caracterización.'
+                    : 'La cédula está duplicada en la base de datos.';
+                $changes[] = $this->personalChangeRow($item, null, null, null, 'no_encontrado', $message);
+                continue;
+            }
+
+            $abogado = $matches->first();
+            foreach ($item['fields'] as $field => $newValue) {
+                if (!$this->isMeaningfulImportValue($newValue)) {
+                    continue;
+                }
+
+                $currentValue = trim((string) ($abogado->{$field} ?? ''));
+                if ($this->normalizePersonalValue($currentValue) === $this->normalizePersonalValue($newValue)) {
+                    continue;
+                }
+
+                $safe = $this->isSafePersonalRestore(
+                    $field,
+                    $currentValue,
+                    $coordinationLabels[$abogado->id] ?? []
+                );
+                $status = $safe ? 'restaurar' : 'conflicto';
+                $counts[$safe ? 'safe' : 'conflicts']++;
+                $changes[] = $this->personalChangeRow(
+                    $item,
+                    $abogado,
+                    $field,
+                    $newValue,
+                    $status,
+                    $safe
+                        ? 'El valor actual tiene la huella de la importación anterior.'
+                        : 'El valor actual parece válido o editado; no será reemplazado.'
+                );
+            }
+        }
+
+        foreach ($changes as $index => &$change) {
+            $change['change_id'] = in_array($change['status'], ['restaurar', 'conflicto'], true)
+                ? 'change_' . $index
+                : null;
+        }
+        unset($change);
+
+        $token = Str::random(40);
+        $payload = [
+            'created_at' => now()->toIso8601String(),
+            'created_by' => auth()->id(),
+            'changes' => collect($changes)
+                ->filter(fn ($change) => $change['change_id'] !== null)
+                ->keyBy('change_id')
+                ->all(),
+        ];
+        Storage::disk('local')->put(
+            'actualizaciones-personales/' . $token . '.json',
+            json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+        );
+
+        return view('admin.abogados.personal_update_preview', compact('changes', 'counts', 'token'));
+    }
+
+    public function applyActualizacionPersonal(Request $request)
+    {
+        $data = $request->validate([
+            'token' => 'required|string|size:40',
+            'selected_changes' => 'required|array|min:1',
+            'selected_changes.*' => 'required|string|max:50',
+        ]);
+        $path = 'actualizaciones-personales/' . $data['token'] . '.json';
+        if (!Storage::disk('local')->exists($path)) {
+            return redirect()->route('admin.abogados.index')
+                ->withErrors(['archivo' => 'La previsualización no existe o ya fue aplicada.']);
+        }
+
+        $payload = json_decode(Storage::disk('local')->get($path), true);
+        if (!is_array($payload) || (int) ($payload['created_by'] ?? 0) !== (int) auth()->id()) {
+            abort(403);
+        }
+        if (empty($payload['created_at']) || Carbon::parse($payload['created_at'])->lt(now()->subHours(2))) {
+            Storage::disk('local')->delete($path);
+            return redirect()->route('admin.abogados.index')
+                ->withErrors(['archivo' => 'La previsualización venció. Carga nuevamente el archivo.']);
+        }
+
+        $applied = 0;
+        $skipped = 0;
+        $coordBefore = $this->coordinationFingerprint();
+        $selectedChanges = collect($data['selected_changes'])->unique()->values();
+
+        DB::transaction(function () use ($payload, $selectedChanges, &$applied, &$skipped) {
+            foreach ($selectedChanges as $changeId) {
+                $change = $payload['changes'][$changeId] ?? null;
+                if (!$change) {
+                    $skipped++;
+                    continue;
+                }
+
+                $abogado = Abogado::whereKey((int) $change['abogado_id'])->lockForUpdate()->first();
+                if (!$abogado || !array_key_exists($change['field'], self::PERSONAL_UPDATE_FIELDS)) {
+                    $skipped++;
+                    continue;
+                }
+
+                if ($this->normalizePersonalValue($abogado->{$change['field']}) !== $this->normalizePersonalValue($change['current'])) {
+                    $skipped++;
+                    continue;
+                }
+
+                $abogado->{$change['field']} = $change['new'];
+                $abogado->save();
+                $applied++;
+            }
+        });
+
+        if ($coordBefore !== $this->coordinationFingerprint()) {
+            throw new \RuntimeException('La huella de coordinaciones cambió durante la actualización.');
+        }
+
+        Storage::disk('local')->delete($path);
+
+        return redirect()->route('admin.abogados.index')
+            ->with('info', "Actualización personal terminada. Campos restaurados: {$applied}. Omitidos por cambios posteriores: {$skipped}. Coordinaciones: sin cambios.");
     }
 
     public function create()
@@ -452,15 +659,18 @@ class AbogadosController extends Controller
             ]));
             $puestoEstructurado = $this->normalizePuestoForSelect($puestoTexto);
 
+            $incomingCorreo = trim((string) $this->valueByAliases($row, $idx, ['correo', 'email']));
+            $incomingDireccion = trim((string) $this->valueByAliases($row, $idx, ['direccion', 'direccion_de_residencia']));
+            $incomingMesa = trim((string) $this->valueByAliases($row, $idx, ['mesa']));
             $payload = [
                 'nombre' => $nombre,
                 'cc' => $cc,
-                'correo' => trim((string) $this->valueByAliases($row, $idx, ['correo', 'email'])) ?: ($cc . '@sin-correo.local'),
-                'direccion' => trim((string) $this->valueByAliases($row, $idx, ['direccion', 'direccion_de_residencia'])) ?: 'N/D',
+                'correo' => $incomingCorreo ?: ($cc . '@sin-correo.local'),
+                'direccion' => $incomingDireccion ?: 'N/D',
                 'telefono' => 'N/D',
                 'comuna' => 'N/D',
                 'puesto' => $puestoEstructurado ?: ($puestoTexto ?: 'N/D'),
-                'mesa' => trim((string) $this->valueByAliases($row, $idx, ['mesa'])) ?: 'N/D',
+                'mesa' => $incomingMesa ?: 'N/D',
                 'activo' => true,
             ];
 
@@ -486,7 +696,23 @@ class AbogadosController extends Controller
 
             $abogado = Abogado::where('cc', $cc)->first();
             if ($abogado) {
-                $abogado->fill($payload)->save();
+                $safeUpdate = [
+                    'nombre' => $nombre,
+                    'activo' => true,
+                ];
+                if ($this->isMeaningfulImportValue($incomingCorreo)) {
+                    $safeUpdate['correo'] = $incomingCorreo;
+                }
+                if ($this->isMeaningfulImportValue($incomingDireccion)) {
+                    $safeUpdate['direccion'] = $incomingDireccion;
+                }
+                if ($this->isMeaningfulImportValue($incomingMesa)) {
+                    $safeUpdate['mesa'] = $incomingMesa;
+                }
+                if (!empty($obsParts)) {
+                    $safeUpdate['observacion'] = implode(' | ', $obsParts);
+                }
+                $abogado->fill($safeUpdate)->save();
                 $updated++;
             } else {
                 Abogado::create($payload);
@@ -679,21 +905,41 @@ class AbogadosController extends Controller
                     &$omitted
                 ) {
                     $abogado = Abogado::where('cc', $cc)->lockForUpdate()->first();
+                    $incomingCorreo = trim((string) $this->valueByAliases($row, $idx, ['correo', 'email']));
+                    $incomingDireccion = trim((string) $this->valueByAliases($row, $idx, ['dir', 'direccion', 'direccion_de_residencia']));
+                    $incomingTelefono = trim((string) $this->valueByAliases($row, $idx, ['telefono', 'celular', 'telefono_celular']));
+                    $incomingObservacion = trim((string) $this->valueByAliases($row, $idx, ['observacion', 'obs']));
                     $payload = [
                         'nombre' => $nombre,
                         'cc' => $cc,
-                        'correo' => trim((string) $this->valueByAliases($row, $idx, ['correo', 'email'])) ?: ($cc . '@sin-correo.local'),
-                        'direccion' => trim((string) $this->valueByAliases($row, $idx, ['dir', 'direccion', 'direccion_de_residencia'])) ?: 'N/D',
-                        'telefono' => trim((string) $this->valueByAliases($row, $idx, ['telefono', 'celular', 'telefono_celular'])) ?: 'N/D',
+                        'correo' => $incomingCorreo ?: ($cc . '@sin-correo.local'),
+                        'direccion' => $incomingDireccion ?: 'N/D',
+                        'telefono' => $incomingTelefono ?: 'N/D',
                         'comuna' => trim((string) ($puesto->comuna ?? 'N/D')) ?: 'N/D',
                         'puesto' => trim(($puesto->municipio ?? '') . ' - ' . ($puesto->puesto ?? $puestoTexto), ' -'),
                         'mesa' => 'Rem',
-                        'observacion' => trim((string) $this->valueByAliases($row, $idx, ['observacion', 'obs'])) ?: null,
+                        'observacion' => $incomingObservacion ?: null,
                         'activo' => true,
                     ];
 
                     if ($abogado) {
-                        $abogado->fill($payload)->save();
+                        $safeUpdate = [
+                            'nombre' => $nombre,
+                            'activo' => true,
+                        ];
+                        if ($this->isMeaningfulImportValue($incomingCorreo)) {
+                            $safeUpdate['correo'] = $incomingCorreo;
+                        }
+                        if ($this->isMeaningfulImportValue($incomingDireccion)) {
+                            $safeUpdate['direccion'] = $incomingDireccion;
+                        }
+                        if ($this->isMeaningfulImportValue($incomingTelefono)) {
+                            $safeUpdate['telefono'] = $incomingTelefono;
+                        }
+                        if ($this->isMeaningfulImportValue($incomingObservacion)) {
+                            $safeUpdate['observacion'] = $incomingObservacion;
+                        }
+                        $abogado->fill($safeUpdate)->save();
                         $updatedAbogados++;
                     } else {
                         $abogado = Abogado::create($payload);
@@ -967,6 +1213,94 @@ class AbogadosController extends Controller
             }
         }
         return '';
+    }
+
+    private function isMeaningfulImportValue($value): bool
+    {
+        $value = trim((string) $value);
+        if ($value === '' || mb_strtoupper($value, 'UTF-8') === 'N/D') {
+            return false;
+        }
+
+        return substr(mb_strtolower($value, 'UTF-8'), -17) !== '@sin-correo.local';
+    }
+
+    private function isSafePersonalRestore(string $field, string $currentValue, array $coordinationLabels): bool
+    {
+        $current = $this->normalizePersonalValue($currentValue);
+        if ($current === '' || $current === 'n/d') {
+            return true;
+        }
+        if ($field === 'correo') {
+            return substr($current, -17) === '@sin-correo.local';
+        }
+        if ($field === 'mesa') {
+            return $current === 'rem';
+        }
+        if ($field === 'puesto') {
+            foreach ($coordinationLabels as $label) {
+                if ($current === $this->normalizePersonalValue($label)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizePersonalValue($value): string
+    {
+        $value = str_replace("\xC2\xA0", ' ', trim((string) $value));
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+        return mb_strtolower(trim($value), 'UTF-8');
+    }
+
+    private function activeCoordinationLabels(): array
+    {
+        $rows = DB::table('abogado_coordinaciones as ac')
+            ->leftJoin('eleccion_puestos as ep', function ($join) {
+                $join->on('ep.eleccion_id', '=', 'ac.eleccion_id')
+                    ->where(function ($query) {
+                        $query->whereColumn('ep.codigo_puesto', 'ac.codpuesto')
+                            ->orWhereRaw('CONCAT(ep.dd,ep.mm,ep.zz,ep.pp) = ac.codpuesto');
+                    });
+            })
+            ->whereNull('ac.released_at')
+            ->select('ac.abogado_id', 'ep.municipio', 'ep.puesto')
+            ->get();
+
+        $labels = [];
+        foreach ($rows as $row) {
+            $label = trim(($row->municipio ?? '') . ' - ' . ($row->puesto ?? ''), ' -');
+            if ($label !== '') {
+                $labels[$row->abogado_id][] = $label;
+            }
+        }
+        return $labels;
+    }
+
+    private function personalChangeRow(array $item, $abogado, ?string $field, ?string $newValue, string $status, string $message): array
+    {
+        return [
+            'row' => $item['row'],
+            'cedula' => $item['cedula'],
+            'nombre' => $item['nombre'] ?: ($abogado->nombre ?? '-'),
+            'abogado_id' => $abogado->id ?? null,
+            'field' => $field,
+            'current' => $field && $abogado ? (string) ($abogado->{$field} ?? '') : null,
+            'new' => $newValue,
+            'status' => $status,
+            'message' => $message,
+        ];
+    }
+
+    private function coordinationFingerprint(): string
+    {
+        return hash('sha256', DB::table('abogado_coordinaciones')
+            ->orderBy('id')
+            ->get()
+            ->map(fn ($row) => json_encode((array) $row, JSON_UNESCAPED_UNICODE))
+            ->implode("\n"));
     }
 
     private function normalizePuestoForSelect(string $raw): ?string

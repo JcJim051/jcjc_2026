@@ -99,6 +99,10 @@ Route::resource('roles', RoleController::class)->names('admin.roles');
 Route::get('abogados/exportar/excel', [AbogadosController::class, 'exportar'])
     ->name('admin.abogados.exportar');
 Route::middleware('can:Superuser')->group(function () {
+    Route::post('abogados/actualizacion-personal/preview', [AbogadosController::class, 'previewActualizacionPersonal'])
+        ->name('admin.abogados.actualizacion_personal.preview');
+    Route::post('abogados/actualizacion-personal/apply', [AbogadosController::class, 'applyActualizacionPersonal'])
+        ->name('admin.abogados.actualizacion_personal.apply');
     Route::get('abogados/enlaces', [AbogadoAccessTokenController::class, 'index'])
         ->name('admin.abogado_tokens.index');
     Route::post('abogados/enlaces', [AbogadoAccessTokenController::class, 'store'])

@@ -70,6 +70,41 @@
         </div>
     </div>
 
+    @can('Superuser')
+        <div class="card collapsed-card">
+            <div class="card-header bg-warning">
+                <h3 class="card-title"><strong>Actualización masiva de información personal</strong></h3>
+                <div class="card-tools">
+                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body" style="display: none;">
+                <form method="POST" action="{{ route('admin.abogados.actualizacion_personal.preview') }}" enctype="multipart/form-data">
+                    @csrf
+                    <div class="row align-items-end">
+                        <div class="col-md-8 form-group">
+                            <label>Excel / CSV de información personal</label>
+                            <input type="file" name="archivo" class="form-control-file" accept=".xlsx,.xls,.csv,.txt" required>
+                            <small class="text-muted">
+                                Cruza por cédula y revisa correo, teléfono, dirección, observación, puesto donde vota y mesa.
+                            </small>
+                        </div>
+                        <div class="col-md-4 form-group">
+                            <button type="submit" class="btn btn-warning btn-block">
+                                <i class="fas fa-search mr-1"></i> Previsualizar cambios
+                            </button>
+                        </div>
+                    </div>
+                    <div class="alert alert-light border mb-0">
+                        Este proceso no modifica coordinaciones, elecciones, puestos coordinados ni cupos remanentes.
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endcan
+
     <div class="card collapsed-card">
         <div class="card-header">
             <h3 class="card-title"><strong>Importar desde Google Sheets</strong></h3>
