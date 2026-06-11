@@ -45,6 +45,7 @@
                     <tr>
                         <th>#</th>
                         <th>Nombre</th>
+                        <th>Cédula</th>
                         <th>Teléfono</th>
                         <th>Correo</th>
                         <th>Activo</th>
@@ -56,6 +57,7 @@
                         <tr>
                             <td>{{ $abogado->id }}</td>
                             <td>{{ $abogado->nombre }}</td>
+                            <td>{{ $abogado->cc ?? '-' }}</td>
                             <td>{{ $abogado->telefono ?? '-' }}</td>
                             <td>{{ $abogado->correo ?? '-' }}</td>
                             <td>{!! $abogado->activo ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-secondary">No</span>' !!}</td>
@@ -71,6 +73,41 @@
     </div>
 
     @can('Superuser')
+        <div class="card collapsed-card">
+            <div class="card-header bg-success">
+                <h3 class="card-title"><strong>Recuperar fotos y PDF de cédulas</strong></h3>
+                <div class="card-tools">
+                    <button type="button" class="btn btn-tool text-white" data-card-widget="collapse">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body" style="display: none;">
+                <form method="POST" action="{{ route('admin.abogados.adjuntos.preview') }}" enctype="multipart/form-data">
+                    @csrf
+                    <div class="row align-items-end">
+                        <div class="col-md-7 form-group">
+                            <label>Excel original de respuestas</label>
+                            <input type="file" name="archivo_adjuntos" class="form-control-file" accept=".xlsx,.xls,.csv,.txt" required>
+                            <small class="text-muted">Debe contener Cédula y las columnas con enlaces de foto/PDF.</small>
+                        </div>
+                        <div class="col-md-3 form-group">
+                            <div class="custom-control custom-checkbox">
+                                <input type="checkbox" class="custom-control-input" id="reemplazar_existentes" name="reemplazar_existentes" value="1">
+                                <label class="custom-control-label" for="reemplazar_existentes">Reemplazar adjuntos existentes</label>
+                            </div>
+                        </div>
+                        <div class="col-md-2 form-group">
+                            <button class="btn btn-success btn-block" type="submit">Previsualizar</button>
+                        </div>
+                    </div>
+                    <div class="alert alert-light border mb-0">
+                        Solo modifica los campos de foto y PDF. Los archivos incorrectos o páginas HTML de Drive serán rechazados.
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <div class="card collapsed-card">
             <div class="card-header bg-warning">
                 <h3 class="card-title"><strong>Actualización masiva de información personal</strong></h3>

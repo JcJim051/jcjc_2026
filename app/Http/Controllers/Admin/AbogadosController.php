@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Traits\EleccionScope;
+use App\Services\AbogadoAttachmentDownloader;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -407,6 +408,171 @@ class AbogadosController extends Controller
 
         return redirect()->route('admin.abogados.index')
             ->with('info', "Actualización personal terminada. Campos restaurados: {$applied}. Omitidos por cambios posteriores: {$skipped}. Coordinaciones: sin cambios.");
+    }
+
+    public function previewAdjuntos(Request $request, AbogadoAttachmentDownloader $downloader)
+    {
+        $data = $request->validate([
+            'archivo_adjuntos' => 'required|file|mimes:xlsx,xls,csv,txt|max:10240',
+            'reemplazar_existentes' => 'nullable|boolean',
+        ]);
+
+        try {
+            $rows = $this->rowsFromUploadedFile($request->file('archivo_adjuntos'));
+        } catch (\Throwable $e) {
+            return back()->withErrors(['archivo_adjuntos' => 'No se pudo leer el archivo: ' . $e->getMessage()]);
+        }
+
+        $headerRowIndex = $this->findHeaderRowIndex($rows, ['cedula']);
+        if ($headerRowIndex === null) {
+            return back()->withErrors(['archivo_adjuntos' => 'No se encontró la columna Cédula.']);
+        }
+
+        $header = array_map(fn ($value) => $this->normalizeHeader((string) $value), $rows[$headerRowIndex]);
+        $idx = array_flip($header);
+        $items = [];
+        $counts = ['rows' => 0, 'ready' => 0, 'not_found' => 0, 'without_links' => 0];
+        $replaceExisting = (bool) ($data['reemplazar_existentes'] ?? false);
+
+        foreach (array_slice($rows, $headerRowIndex + 1) as $offset => $row) {
+            $cedula = $this->digitsOnly($this->valueByAliases($row, $idx, [
+                'cedula', 'cedula_de_ciudadania', 'cc', 'documento',
+            ]));
+            if ($cedula === '') {
+                continue;
+            }
+
+            $counts['rows']++;
+            $photoUrl = trim($this->valueByAliases($row, $idx, [
+                'cargar_foto', 'cargar_foto_tipo_carnet', 'foto', 'fotografia', 'foto_tipo_carnet',
+            ]));
+            $pdfUrl = trim($this->valueByAliases($row, $idx, [
+                'pdf_de_la_cedula', 'pdf_cedula', 'cedula_pdf', 'documento_de_identidad',
+            ]));
+            $abogado = Abogado::whereRaw(
+                "REPLACE(REPLACE(REPLACE(REPLACE(cc, '.', ''), ',', ''), '-', ''), ' ', '') = ?",
+                [$cedula]
+            )->first();
+
+            $status = 'listo';
+            $message = 'Adjuntos listos para validar y descargar.';
+            if (!$abogado) {
+                $status = 'no_encontrado';
+                $message = 'La cédula no existe en la caracterización.';
+                $counts['not_found']++;
+            } elseif ($photoUrl === '' && $pdfUrl === '') {
+                $status = 'sin_enlaces';
+                $message = 'La fila no contiene enlaces de foto ni PDF.';
+                $counts['without_links']++;
+            } else {
+                $counts['ready']++;
+            }
+
+            $items[] = [
+                'row' => $headerRowIndex + 2 + $offset,
+                'abogado_id' => $abogado->id ?? null,
+                'cedula' => $cedula,
+                'nombre' => $abogado->nombre ?? trim($this->valueByAliases($row, $idx, ['nombre', 'nombre_completo'])),
+                'photo_url' => filter_var($photoUrl, FILTER_VALIDATE_URL) ? $photoUrl : null,
+                'pdf_url' => filter_var($pdfUrl, FILTER_VALIDATE_URL) ? $pdfUrl : null,
+                'current_photo' => $abogado->foto ?? null,
+                'current_pdf' => $abogado->pdf_cc ?? null,
+                'valid_photo' => $abogado ? $downloader->storedFileIsValid($abogado->foto, 'image') : false,
+                'valid_pdf' => $abogado ? $downloader->storedFileIsValid($abogado->pdf_cc, 'pdf') : false,
+                'status' => $status,
+                'message' => $message,
+            ];
+        }
+
+        $token = Str::random(40);
+        Storage::disk('local')->put('abogados-adjuntos/' . $token . '.json', json_encode([
+            'created_at' => now()->toIso8601String(),
+            'created_by' => auth()->id(),
+            'replace_existing' => $replaceExisting,
+            'items' => $items,
+            'results' => [],
+        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+
+        return view('admin.abogados.attachments_preview', compact('items', 'counts', 'token', 'replaceExisting'));
+    }
+
+    public function processAdjuntos(Request $request, AbogadoAttachmentDownloader $downloader)
+    {
+        $data = $request->validate(['token' => 'required|string|size:40']);
+        $path = 'abogados-adjuntos/' . $data['token'] . '.json';
+        if (!Storage::disk('local')->exists($path)) {
+            return redirect()->route('admin.abogados.index')
+                ->withErrors(['archivo_adjuntos' => 'El lote no existe o ya finalizó.']);
+        }
+
+        $batch = json_decode(Storage::disk('local')->get($path), true);
+        if (!is_array($batch) || (int) ($batch['created_by'] ?? 0) !== (int) auth()->id()) {
+            abort(403);
+        }
+
+        $pendingIndexes = collect($batch['items'] ?? [])
+            ->keys()
+            ->reject(fn ($index) => array_key_exists((string) $index, $batch['results'] ?? []))
+            ->take(8);
+
+        foreach ($pendingIndexes as $index) {
+            $item = $batch['items'][$index];
+            $result = ['status' => 'omitido', 'messages' => []];
+            $abogado = !empty($item['abogado_id']) ? Abogado::find($item['abogado_id']) : null;
+
+            if (!$abogado || $item['status'] !== 'listo') {
+                $result['messages'][] = $item['message'];
+                $batch['results'][(string) $index] = $result;
+                continue;
+            }
+
+            foreach (['pdf' => ['url' => 'pdf_url', 'field' => 'pdf_cc'], 'image' => ['url' => 'photo_url', 'field' => 'foto']] as $kind => $config) {
+                $url = $item[$config['url']] ?? null;
+                if (!$url) {
+                    continue;
+                }
+
+                $currentPath = $abogado->{$config['field']};
+                $currentIsValid = $downloader->storedFileIsValid($currentPath, $kind);
+                if ($currentIsValid && empty($batch['replace_existing'])) {
+                    $result['messages'][] = ($kind === 'pdf' ? 'PDF' : 'Foto') . ' existente conservado.';
+                    continue;
+                }
+
+                $download = $downloader->download($url, $kind, $item['cedula']);
+                if (!$download['ok']) {
+                    $result['status'] = 'error';
+                    $result['messages'][] = ($kind === 'pdf' ? 'PDF: ' : 'Foto: ') . $download['message'];
+                    continue;
+                }
+
+                $oldPath = $currentPath;
+                $abogado->{$config['field']} = $download['path'];
+                $abogado->save();
+                if ($oldPath && $oldPath !== $download['path']) {
+                    Storage::disk('public')->delete($oldPath);
+                }
+                if ($result['status'] !== 'error') {
+                    $result['status'] = 'actualizado';
+                }
+                $result['messages'][] = ($kind === 'pdf' ? 'PDF' : 'Foto') . ' guardado y validado.';
+            }
+
+            $batch['results'][(string) $index] = $result;
+        }
+
+        Storage::disk('local')->put($path, json_encode($batch, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        $processed = count($batch['results']);
+        $total = count($batch['items']);
+        $finished = $processed >= $total;
+
+        return view('admin.abogados.attachments_progress', [
+            'token' => $data['token'],
+            'batch' => $batch,
+            'processed' => $processed,
+            'total' => $total,
+            'finished' => $finished,
+        ]);
     }
 
     public function create()

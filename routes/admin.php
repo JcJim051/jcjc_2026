@@ -103,6 +103,10 @@ Route::middleware('can:Superuser')->group(function () {
         ->name('admin.abogados.actualizacion_personal.preview');
     Route::post('abogados/actualizacion-personal/apply', [AbogadosController::class, 'applyActualizacionPersonal'])
         ->name('admin.abogados.actualizacion_personal.apply');
+    Route::post('abogados/adjuntos/preview', [AbogadosController::class, 'previewAdjuntos'])
+        ->name('admin.abogados.adjuntos.preview');
+    Route::post('abogados/adjuntos/process', [AbogadosController::class, 'processAdjuntos'])
+        ->name('admin.abogados.adjuntos.process');
     Route::get('abogados/enlaces', [AbogadoAccessTokenController::class, 'index'])
         ->name('admin.abogado_tokens.index');
     Route::post('abogados/enlaces', [AbogadoAccessTokenController::class, 'store'])
