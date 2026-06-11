@@ -5,6 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Abogado;
 use App\Models\AsistenciaSession;
 use App\Models\Control;
+use BaconQrCode\Renderer\ImageRenderer;
+use BaconQrCode\Renderer\Image\SvgImageBackEnd;
+use BaconQrCode\Renderer\RendererStyle\RendererStyle;
+use BaconQrCode\Writer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
@@ -28,10 +32,14 @@ class AsistenciaReunionController extends Controller
             false
         );
         $formUrl = url($signedPath);
+        $svg = (new Writer(
+            new ImageRenderer(new RendererStyle(700, 3), new SvgImageBackEnd())
+        ))->writeString($formUrl);
+        $qrSvg = trim(substr($svg, strpos($svg, "\n") + 1));
 
         $asistentesRegistrados = Control::where('asistencia_session_id', $session->id)->count();
 
-        return view('asistencia.panel_qr', compact('session', 'formUrl', 'asistentesRegistrados'));
+        return view('asistencia.panel_qr', compact('session', 'formUrl', 'qrSvg', 'asistentesRegistrados'));
     }
 
     public function mostrarFormularioSesion(Request $request, $publicToken)

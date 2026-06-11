@@ -4,6 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AbogadoAccessToken;
+use BaconQrCode\Renderer\ImageRenderer;
+use BaconQrCode\Renderer\Image\SvgImageBackEnd;
+use BaconQrCode\Renderer\RendererStyle\RendererStyle;
+use BaconQrCode\Writer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -36,7 +40,22 @@ class AbogadoAccessTokenController extends Controller
         return redirect()
             ->route('admin.abogado_tokens.index')
             ->with('success', 'Enlace creado correctamente.')
-            ->with('generated_url', $token->publicUrl());
+            ->with('generated_url', $token->publicUrl())
+            ->with('generated_projection_url', route('admin.abogado_tokens.projection', $token));
+    }
+
+    public function projection(AbogadoAccessToken $token)
+    {
+        $svg = (new Writer(
+            new ImageRenderer(
+                new RendererStyle(760, 3),
+                new SvgImageBackEnd()
+            )
+        ))->writeString($token->publicUrl());
+
+        $qrSvg = trim(substr($svg, strpos($svg, "\n") + 1));
+
+        return view('admin.abogado_tokens.projection', compact('token', 'qrSvg'));
     }
 
     public function toggle(AbogadoAccessToken $token)

@@ -66,11 +66,16 @@
             border-color: #0c406c;
         }
     </style>
+    <link rel="stylesheet" href="{{ asset('css/testiapp-tokens.css') }}">
 </head>
 <body>
 <div class="brand-wrap">
     <div class="brand-card">
         <div class="brand-header">
+            <div class="token-brand" style="color:#fff;margin-bottom:14px;">
+                <img src="{{ asset('img/logo.png') }}" alt="Testiapp">
+                <span>Testiapp</span>
+            </div>
             <h4>Editar Referido</h4>
         </div>
         <div class="brand-body">

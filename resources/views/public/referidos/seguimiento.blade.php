@@ -39,6 +39,7 @@
         .brand-footer a { color:inherit; text-decoration:none; }
         .brand-footer a:hover { text-decoration:underline; }
     </style>
+    <link rel="stylesheet" href="{{ asset('css/testiapp-tokens.css') }}">
 </head>
 <body>
 <div class="brand-wrap">

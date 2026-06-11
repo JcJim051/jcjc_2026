@@ -91,11 +91,16 @@
             height: 36px;
         }
     </style>
+    <link rel="stylesheet" href="{{ asset('css/testiapp-tokens.css') }}">
 </head>
 <body>
 <div class="brand-wrap">
     <div class="card brand-card">
         <div class="card-header">
+            <div class="token-brand" style="color:#fff;margin-bottom:14px;">
+                <img src="{{ asset('img/logo.png') }}" alt="Testiapp">
+                <span>Testiapp</span>
+            </div>
             <h4 class="brand-title">Formulario de Referidos</h4>
             <p class="brand-subtitle">
                 <strong>Departamento:</strong> {{ $departamento ?? 'N/D' }}

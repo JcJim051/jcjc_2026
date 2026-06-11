@@ -17,11 +17,16 @@
         .btn-success { background: var(--green); border-color: var(--green); }
         .expires { display: inline-block; background: rgba(255,255,255,.14); border-radius: 20px; padding: 5px 11px; font-size: .83rem; margin-top: 10px; }
     </style>
+    <link rel="stylesheet" href="{{ asset('css/testiapp-tokens.css') }}">
     @yield('css')
 </head>
 <body>
     <main class="public-shell">
         <header class="brand-panel">
+            <div class="token-brand" style="color:#fff;">
+                <img src="{{ asset('img/logo.png') }}" alt="Testiapp">
+                <span>Testiapp</span>
+            </div>
             <h1>@yield('heading')</h1>
             @hasSection('subtitle')<div class="mt-2">@yield('subtitle')</div>@endif
             @isset($accessToken)

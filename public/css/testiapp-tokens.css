@@ -1,0 +1,248 @@
+:root {
+    --ta-ink: #14212a;
+    --ta-muted: #66747d;
+    --ta-brand: #1097ad;
+    --ta-brand-dark: #087387;
+    --ta-accent: #f5b51b;
+    --ta-paper: #fff;
+    --ta-line: #dfe8ea;
+    --ta-success: #16865d;
+    --ta-danger: #bf3f48;
+}
+
+html { min-height: 100%; }
+body {
+    min-height: 100vh;
+    color: var(--ta-ink) !important;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif !important;
+    background:
+        radial-gradient(circle at 5% 8%, rgba(16, 151, 173, .2), transparent 28rem),
+        radial-gradient(circle at 94% 92%, rgba(245, 181, 27, .15), transparent 24rem),
+        #edf4f5 !important;
+}
+
+.public-shell,
+.brand-wrap {
+    width: min(1240px, calc(100% - 28px)) !important;
+    max-width: 1240px !important;
+    margin: clamp(18px, 4vw, 54px) auto !important;
+    padding: 0 !important;
+}
+
+.brand-panel,
+.brand-header,
+.brand-card .card-header {
+    position: relative;
+    overflow: hidden;
+    padding: clamp(24px, 4vw, 44px) !important;
+    color: #fff !important;
+    border: 0 !important;
+    border-radius: 26px 26px 0 0 !important;
+    background: linear-gradient(135deg, var(--ta-brand-dark), var(--ta-brand)) !important;
+}
+
+.brand-panel::after,
+.brand-header::after,
+.brand-card .card-header::after {
+    content: "";
+    position: absolute;
+    width: 240px;
+    height: 240px;
+    right: -90px;
+    bottom: -150px;
+    border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: 50%;
+}
+
+.brand-panel h1,
+.brand-title,
+.brand-header h4 {
+    position: relative;
+    z-index: 1;
+    margin: 0 !important;
+    font-size: clamp(1.65rem, 3vw, 2.65rem) !important;
+    font-weight: 900 !important;
+    letter-spacing: -.035em !important;
+}
+
+.brand-subtitle,
+.brand-panel > div {
+    position: relative;
+    z-index: 1;
+    max-width: 760px;
+    font-size: 1.05rem;
+    opacity: .93;
+}
+
+.content-panel,
+.brand-card,
+.brand-alert {
+    overflow: hidden;
+    border: 1px solid rgba(223, 232, 234, .9) !important;
+    border-radius: 0 0 26px 26px !important;
+    background: rgba(255, 255, 255, .98) !important;
+    box-shadow: 0 28px 80px rgba(20, 33, 42, .14) !important;
+}
+
+.content-panel,
+.brand-body,
+.brand-card .card-body,
+.brand-alert {
+    padding: clamp(22px, 4vw, 42px) !important;
+}
+
+.brand-alert { border-radius: 26px !important; }
+
+.section-title {
+    margin: 32px 0 20px !important;
+    padding: 0 0 10px !important;
+    color: var(--ta-brand-dark) !important;
+    border-bottom: 2px solid #e3edef !important;
+    font-size: 1.05rem !important;
+    font-weight: 900 !important;
+    letter-spacing: .025em;
+}
+
+.section-title:first-child { margin-top: 4px !important; }
+
+label {
+    color: #263842;
+    font-size: .9rem;
+    font-weight: 800 !important;
+}
+
+.form-control,
+.select2-container .select2-selection--single,
+.select2-container .select2-selection--multiple {
+    min-height: 46px !important;
+    border: 1px solid #ccdadd !important;
+    border-radius: 11px !important;
+    background: #fbfdfd !important;
+    box-shadow: none !important;
+}
+
+.form-control:focus,
+.select2-container--focus .select2-selection {
+    border-color: var(--ta-brand) !important;
+    box-shadow: 0 0 0 3px rgba(16, 151, 173, .13) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: 44px !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 44px !important;
+}
+
+.btn {
+    border-radius: 11px !important;
+    font-weight: 800 !important;
+}
+.btn-primary,
+.btn-referir {
+    color: #fff !important;
+    border-color: var(--ta-brand) !important;
+    background: var(--ta-brand) !important;
+}
+.btn-primary:hover,
+.btn-referir:hover {
+    border-color: var(--ta-brand-dark) !important;
+    background: var(--ta-brand-dark) !important;
+}
+.btn-success {
+    border-color: var(--ta-success) !important;
+    background: var(--ta-success) !important;
+}
+.btn-lg { min-height: 50px; padding-inline: 24px !important; }
+
+.alert {
+    border: 0 !important;
+    border-radius: 13px !important;
+}
+
+.expires {
+    position: relative;
+    z-index: 1;
+    display: inline-flex !important;
+    margin-top: 16px !important;
+    padding: 7px 12px !important;
+    border: 1px solid rgba(255,255,255,.22);
+    border-radius: 999px !important;
+    background: rgba(255,255,255,.13) !important;
+    font-weight: 700;
+}
+
+.brand-logo-wrap {
+    width: 54px !important;
+    height: 54px !important;
+    flex: 0 0 54px;
+    border-radius: 14px !important;
+}
+.brand-logo { width: 38px !important; height: 38px !important; }
+.brand-title-row { position: relative; z-index: 1; }
+
+.brand-footer {
+    margin-top: 18px !important;
+    padding: 12px 16px !important;
+    color: var(--ta-brand-dark) !important;
+    border: 1px solid rgba(223, 232, 234, .9);
+    border-radius: 14px !important;
+    background: rgba(255, 255, 255, .84) !important;
+    box-shadow: 0 10px 30px rgba(20, 33, 42, .07) !important;
+}
+
+.table-wrap,
+.table-responsive {
+    border-radius: 15px;
+}
+.table thead th,
+table.dataTable thead th {
+    color: #fff !important;
+    border-color: rgba(255,255,255,.14) !important;
+    background: var(--ta-brand-dark) !important;
+}
+.table tbody tr:nth-child(even) td { background: #f6fafb !important; }
+table.dataTable.no-footer { border-bottom-color: var(--ta-line) !important; }
+.dataTables_filter input {
+    min-height: 38px;
+    border: 1px solid #ccdadd !important;
+    border-radius: 9px;
+}
+
+.token-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 22px;
+    color: var(--ta-brand-dark);
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.token-brand img { width: 42px; height: 42px; object-fit: contain; }
+
+@media (max-width: 767px) {
+    .public-shell,
+    .brand-wrap {
+        width: min(100% - 18px, 1240px) !important;
+        margin: 9px auto 24px !important;
+    }
+    .brand-panel,
+    .brand-header,
+    .brand-card .card-header {
+        border-radius: 18px 18px 0 0 !important;
+    }
+    .content-panel,
+    .brand-card {
+        border-radius: 0 0 18px 18px !important;
+    }
+    .content-panel,
+    .brand-body,
+    .brand-card .card-body,
+    .brand-alert {
+        padding: 20px 16px !important;
+    }
+    .brand-title-row { align-items: flex-start !important; }
+    .top-action { justify-content: stretch !important; }
+    .top-action .btn-referir { width: 100%; text-align: center; }
+}

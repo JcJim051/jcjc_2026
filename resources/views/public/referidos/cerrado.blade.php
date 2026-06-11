@@ -50,10 +50,15 @@
             box-shadow: 0 8px 20px rgba(15, 76, 129, 0.08);
         }
     </style>
+    <link rel="stylesheet" href="{{ asset('css/testiapp-tokens.css') }}">
 </head>
 <body>
 <div class="brand-wrap">
     <div class="alert alert-warning brand-alert">
+        <div class="token-brand">
+            <img src="{{ asset('img/logo.png') }}" alt="Testiapp">
+            <span>Testiapp</span>
+        </div>
         <h4>Formulario cerrado</h4>
         <p>Este enlace ya no recibe nuevos referidos. El seguimiento sigue disponible.</p>
         <a class="btn btn-primary" href="{{ route('public.referidos.seguimiento', $token->token) }}">Ir a seguimiento</a>

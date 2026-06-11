@@ -23,6 +23,11 @@
                     <button class="btn btn-info" type="button" onclick="copyLink('generatedUrl')">
                         <i class="fas fa-copy mr-1"></i> Copiar
                     </button>
+                    @if(session('generated_projection_url'))
+                        <a href="{{ session('generated_projection_url') }}" target="_blank" class="btn btn-success">
+                            <i class="fas fa-qrcode mr-1"></i> Proyectar QR
+                        </a>
+                    @endif
                 </div>
             </div>
         </div>
@@ -132,6 +137,12 @@
                                             {{ $token->active ? 'Desactivar' : 'Activar' }}
                                         </button>
                                     </form>
+                                    <a href="{{ route('admin.abogado_tokens.projection', $token) }}"
+                                       target="_blank"
+                                       class="btn btn-sm btn-success"
+                                       title="Abrir QR para proyectar">
+                                        <i class="fas fa-qrcode mr-1"></i> QR
+                                    </a>
                                     <form method="POST" action="{{ route('admin.abogado_tokens.destroy', $token) }}" onsubmit="return confirm('¿Eliminar este enlace?');">
                                         @csrf
                                         @method('DELETE')
