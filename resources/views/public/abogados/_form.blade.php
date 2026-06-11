@@ -67,8 +67,8 @@
 </div>
 <div class="row">
     <div class="col-md-6 form-group">
-        <label>Disponibilidad</label>
-        <input type="text" name="disponibilidad" class="form-control" value="{{ old('disponibilidad', $abogado->disponibilidad ?? '') }}">
+        <label>Secretaría</label>
+        <input type="text" name="secretaria" class="form-control" value="{{ old('secretaria', $abogado->secretaria ?? '') }}">
     </div>
     <div class="col-md-6 form-group">
         <label>Observaciones</label>

@@ -174,6 +174,20 @@
                             <td>
                                 <div class="d-flex" style="gap:6px;">
                                     <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#editTokenModal{{ $t->id }}">Editar</button>
+                                    @if(!$t->es_consulta)
+                                        <a href="{{ route('admin.territorio_tokens.projection', ['token' => $t, 'target' => 'formulario']) }}"
+                                           target="_blank"
+                                           class="btn btn-sm btn-success"
+                                           title="Proyectar QR para referir">
+                                            <i class="fas fa-qrcode"></i> Referir
+                                        </a>
+                                    @endif
+                                    <a href="{{ route('admin.territorio_tokens.projection', ['token' => $t, 'target' => 'seguimiento']) }}"
+                                       target="_blank"
+                                       class="btn btn-sm btn-primary"
+                                       title="Proyectar QR de seguimiento">
+                                        <i class="fas fa-chart-line"></i> Avance
+                                    </a>
                                     <form action="{{ route('admin.territorio_tokens.toggle', $t) }}" method="POST">
                                         @csrf
                                         <button class="btn btn-sm btn-warning" type="submit">Cambiar</button>

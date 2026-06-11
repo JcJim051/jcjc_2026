@@ -154,6 +154,7 @@ Route::get('territorio-tokens/export', [TerritorioTokensController::class, 'expo
 Route::post('territorio-tokens', [TerritorioTokensController::class, 'store'])->name('admin.territorio_tokens.store');
 Route::get('territorio-tokens/municipios', [TerritorioTokensController::class, 'municipios'])->name('admin.territorio_tokens.municipios');
 Route::get('territorio-tokens/comunas', [TerritorioTokensController::class, 'comunas'])->name('admin.territorio_tokens.comunas');
+Route::get('territorio-tokens/{token}/proyeccion', [TerritorioTokensController::class, 'projection'])->name('admin.territorio_tokens.projection');
 Route::post('territorio-tokens/{token}/toggle', [TerritorioTokensController::class, 'toggle'])->name('admin.territorio_tokens.toggle');
 Route::put('territorio-tokens/{token}', [TerritorioTokensController::class, 'update'])->name('admin.territorio_tokens.update');
 Route::delete('territorio-tokens/{token}', [TerritorioTokensController::class, 'destroy'])->name('admin.territorio_tokens.destroy');

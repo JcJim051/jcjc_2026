@@ -170,7 +170,6 @@ class PublicAbogadoProfileController extends Controller
             'entidad' => 'nullable|string|max:255',
             'secretaria' => 'nullable|string|max:255',
             'honorarios' => 'nullable|string|max:255',
-            'disponibilidad' => 'nullable|string|max:255',
             'observacion' => 'nullable|string|max:255',
             'foto' => 'nullable|image|max:4096',
             'pdf_cc' => 'nullable|file|mimes:pdf|max:4096',

@@ -11,6 +11,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use App\Traits\EleccionScope;
+use BaconQrCode\Renderer\ImageRenderer;
+use BaconQrCode\Renderer\Image\SvgImageBackEnd;
+use BaconQrCode\Renderer\RendererStyle\RendererStyle;
+use BaconQrCode\Writer;
 
 class TerritorioTokensController extends Controller
 {
@@ -335,6 +339,39 @@ class TerritorioTokensController extends Controller
 
         return redirect()->route('admin.territorio_tokens.index')
             ->with('success', 'Token creado correctamente.');
+    }
+
+    public function projection(Request $request, TerritorioToken $token)
+    {
+        $target = $request->get('target') === 'seguimiento' || $token->es_consulta
+            ? 'seguimiento'
+            : 'formulario';
+
+        $publicUrl = $target === 'seguimiento'
+            ? route('public.referidos.seguimiento', $token->token)
+            : route('public.referidos.form', $token->token);
+
+        $svg = (new Writer(
+            new ImageRenderer(new RendererStyle(760, 3), new SvgImageBackEnd())
+        ))->writeString($publicUrl);
+        $qrSvg = trim(substr($svg, strpos($svg, "\n") + 1));
+
+        $eleccion = Eleccion::find($token->eleccion_id);
+        $territorio = EleccionPuesto::query()
+            ->where('eleccion_id', $token->eleccion_id)
+            ->where('dd', $token->dd)
+            ->where('mm', $token->mm)
+            ->select('departamento', 'municipio')
+            ->first();
+
+        return view('admin.territorio_tokens.projection', compact(
+            'token',
+            'target',
+            'publicUrl',
+            'qrSvg',
+            'eleccion',
+            'territorio'
+        ));
     }
 
     public function toggle(TerritorioToken $token)
