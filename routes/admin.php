@@ -111,8 +111,6 @@ Route::middleware('can:Superuser')->group(function () {
         ->name('admin.abogado_tokens.index');
     Route::post('abogados/enlaces', [AbogadoAccessTokenController::class, 'store'])
         ->name('admin.abogado_tokens.store');
-    Route::get('abogados/enlaces/{token}/proyeccion', [AbogadoAccessTokenController::class, 'projection'])
-        ->name('admin.abogado_tokens.projection');
     Route::post('abogados/enlaces/{token}/toggle', [AbogadoAccessTokenController::class, 'toggle'])
         ->name('admin.abogado_tokens.toggle');
     Route::delete('abogados/enlaces/{token}', [AbogadoAccessTokenController::class, 'destroy'])

@@ -137,7 +137,7 @@
                                             {{ $token->active ? 'Desactivar' : 'Activar' }}
                                         </button>
                                     </form>
-                                    <a href="{{ route('admin.abogado_tokens.projection', $token) }}"
+                                    <a href="{{ route('public.abogados.projection', $token->token) }}"
                                        target="_blank"
                                        class="btn btn-sm btn-success"
                                        title="Abrir QR para proyectar">

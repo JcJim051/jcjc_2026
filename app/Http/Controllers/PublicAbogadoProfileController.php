@@ -5,12 +5,30 @@ namespace App\Http\Controllers;
 use App\Models\Abogado;
 use App\Models\AbogadoAccessToken;
 use App\Models\Puestos;
+use BaconQrCode\Renderer\ImageRenderer;
+use BaconQrCode\Renderer\Image\SvgImageBackEnd;
+use BaconQrCode\Renderer\RendererStyle\RendererStyle;
+use BaconQrCode\Writer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class PublicAbogadoProfileController extends Controller
 {
+    public function projection(string $token)
+    {
+        $accessToken = AbogadoAccessToken::where('token', $token)->firstOrFail();
+        $svg = (new Writer(
+            new ImageRenderer(new RendererStyle(760, 3), new SvgImageBackEnd())
+        ))->writeString($accessToken->publicUrl());
+        $qrSvg = trim(substr($svg, strpos($svg, "\n") + 1));
+
+        return view('admin.abogado_tokens.projection', [
+            'token' => $accessToken,
+            'qrSvg' => $qrSvg,
+        ]);
+    }
+
     public function characterizationForm(string $token)
     {
         $accessToken = $this->resolveToken($token, AbogadoAccessToken::TYPE_CHARACTERIZATION);

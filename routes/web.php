@@ -21,6 +21,8 @@ Route::get('/', function () {
 });
 
 Route::prefix('equipo-abogados')->middleware('throttle:20,1')->group(function () {
+    Route::get('proyeccion/{token}', [PublicAbogadoProfileController::class, 'projection'])
+        ->name('public.abogados.projection');
     Route::get('caracterizacion/{token}', [PublicAbogadoProfileController::class, 'characterizationForm'])
         ->name('public.abogados.characterization.form');
     Route::post('caracterizacion/{token}', [PublicAbogadoProfileController::class, 'characterizationStore'])

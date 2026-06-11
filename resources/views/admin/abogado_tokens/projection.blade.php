@@ -153,7 +153,6 @@
 </head>
 <body>
     <div class="tools">
-        <a class="tool" href="{{ route('admin.abogado_tokens.index') }}">Volver</a>
         <button class="tool" type="button" onclick="document.documentElement.requestFullscreen && document.documentElement.requestFullscreen()">Pantalla completa</button>
     </div>
 
