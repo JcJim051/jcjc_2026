@@ -3,7 +3,7 @@
 @section('title', 'Asistencia Comité Electoral')
 @section('heading', 'Asistencia Comité Electoral')
 @section('subtitle')
-    Confirma tu identidad con los mismos datos registrados en la plataforma.
+    Confirma tu identidad y completa tu celular si todavía no está registrado.
 @stop
 
 @section('content')
@@ -28,7 +28,8 @@
 
         <div class="section-title">Validación de identidad</div>
         <p class="text-muted mb-4">
-            Los tres datos deben coincidir con tu caracterización para registrar la asistencia.
+            Validaremos tu cédula y correo. Si aún no tienes celular registrado, el número ingresado se agregará
+            automáticamente a tu caracterización.
         </p>
 
         <div class="row">
@@ -41,8 +42,11 @@
                 <input class="form-control" type="email" id="correo" name="correo" value="{{ old('correo') }}" autocomplete="email" required>
             </div>
             <div class="col-md-4 form-group">
-                <label for="telefono">Celular registrado</label>
+                <label for="telefono">Celular</label>
                 <input class="form-control" type="text" id="telefono" name="telefono" value="{{ old('telefono') }}" autocomplete="tel" required>
+                <small class="form-text text-muted">
+                    Si ya tienes celular registrado debe coincidir. Si no tienes, este será guardado en tu caracterización.
+                </small>
             </div>
         </div>
 

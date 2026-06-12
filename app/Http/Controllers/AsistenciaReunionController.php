@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Abogado;
+use App\Models\AbogadoPhoneUpdate;
 use App\Models\AsistenciaSession;
 use App\Models\Control;
 use BaconQrCode\Renderer\ImageRenderer;
@@ -11,6 +12,7 @@ use BaconQrCode\Renderer\RendererStyle\RendererStyle;
 use BaconQrCode\Writer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
 
 class AsistenciaReunionController extends Controller
@@ -79,56 +81,108 @@ class AsistenciaReunionController extends Controller
 
         $cedula = $this->normalizeDigits($request->cc);
         $correo = mb_strtolower(trim((string) $request->correo));
-        $telefono = $this->normalizeDigits($request->telefono);
+        $telefono = trim((string) $request->telefono);
 
-        $abogado = Abogado::query()
-            ->whereRaw(
-                "REPLACE(REPLACE(REPLACE(REPLACE(cc, '.', ''), ',', ''), '-', ''), ' ', '') = ?",
-                [$cedula]
-            )
-            ->whereRaw('LOWER(TRIM(correo)) = ?', [$correo])
-            ->whereRaw(
-                "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(telefono, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') = ?",
-                [$telefono]
-            )
-            ->first();
-
-        if (!$abogado) {
+        if (!$this->isUsefulPhone($telefono)) {
             return redirect()->back()->withErrors([
-                'error' => 'Los datos no coinciden con tu registro. Verifica cédula, correo y celular o comunícate con coordinación.',
+                'telefono' => 'Ingresa un número de celular válido. No se permiten valores vacíos, N/D o No registra.',
             ])->withInput();
         }
 
-        $codigoAbogado = (string) $abogado->id;
+        $result = DB::transaction(function () use ($session, $cedula, $correo, $telefono) {
+            $abogado = Abogado::query()
+                ->whereRaw(
+                    "REPLACE(REPLACE(REPLACE(REPLACE(cc, '.', ''), ',', ''), '-', ''), ' ', '') = ?",
+                    [$cedula]
+                )
+                ->whereRaw('LOWER(TRIM(correo)) = ?', [$correo])
+                ->lockForUpdate()
+                ->first();
 
-        $yaRegistrado = Control::where('asistencia_session_id', $session->id)
-            ->where('codigo_abogado', $codigoAbogado)
-            ->exists();
+            if (!$abogado) {
+                return ['error' => 'No encontramos una caracterización que coincida con la cédula y el correo ingresados.'];
+            }
 
-        if ($yaRegistrado) {
-            return redirect()->back()->withErrors(['error' => 'Ya registraste asistencia en esta reunión.']);
+            $codigoAbogado = (string) $abogado->id;
+            if (Control::where('asistencia_session_id', $session->id)
+                ->where('codigo_abogado', $codigoAbogado)
+                ->exists()) {
+                return ['error' => 'Ya registraste asistencia en esta reunión.'];
+            }
+
+            $phoneCompleted = false;
+            if ($this->isMissingPhone($abogado->telefono)) {
+                $oldPhone = $abogado->telefono;
+                $abogado->telefono = $telefono;
+                $abogado->save();
+
+                AbogadoPhoneUpdate::create([
+                    'abogado_id' => $abogado->id,
+                    'reunion_id' => $session->reunion_id,
+                    'asistencia_session_id' => $session->id,
+                    'old_phone' => $oldPhone,
+                    'new_phone' => $telefono,
+                    'source' => 'asistencia',
+                ]);
+                $phoneCompleted = true;
+            } elseif ($this->normalizePhone($abogado->telefono) !== $this->normalizePhone($telefono)) {
+                return ['error' => 'El celular no coincide con el registrado en tu caracterización. Verifica los datos o comunícate con coordinación.'];
+            }
+
+            $motivo = 'Asistencia reunión #'.$session->reunion->id;
+            if (!empty($session->reunion->lugar)) {
+                $motivo .= ' - '.$session->reunion->lugar;
+            }
+
+            Control::create([
+                'codigo_abogado' => $codigoAbogado,
+                'asistencia_session_id' => $session->id,
+                'fecha' => Carbon::now('America/Bogota')->format('Y-m-d H:i:s'),
+                'lugar' => $session->reunion->lugar,
+                'motivo' => $motivo,
+            ]);
+
+            $session->reunion->abogados()->syncWithoutDetaching([$abogado->id]);
+
+            return ['phone_completed' => $phoneCompleted];
+        });
+
+        if (!empty($result['error'])) {
+            return redirect()->back()->withErrors(['error' => $result['error']])->withInput();
         }
 
-        $motivo = 'Asistencia reunión #'.$session->reunion->id;
-        if (!empty($session->reunion->lugar)) {
-            $motivo .= ' - '.$session->reunion->lugar;
-        }
+        $message = !empty($result['phone_completed'])
+            ? 'Asistencia registrada y celular agregado correctamente a tu caracterización.'
+            : 'Asistencia registrada con éxito.';
 
-        Control::create([
-            'codigo_abogado' => $codigoAbogado,
-            'asistencia_session_id' => $session->id,
-            'fecha' => Carbon::now('America/Bogota')->format('Y-m-d H:i:s'),
-            'lugar' => $session->reunion->lugar,
-            'motivo' => $motivo,
-        ]);
-
-        $session->reunion->abogados()->syncWithoutDetaching([$abogado->id]);
-
-        return redirect()->back()->with('info', 'Asistencia registrada con éxito.');
+        return redirect()->back()->with('info', $message);
     }
 
     private function normalizeDigits(?string $value): string
     {
         return preg_replace('/\D+/', '', (string) $value) ?: '';
+    }
+
+    private function normalizePhone(?string $value): string
+    {
+        $value = mb_strtolower(trim((string) $value), 'UTF-8');
+        return preg_replace('/[\s\-\(\)\.]+/u', '', $value) ?? $value;
+    }
+
+    private function isMissingPhone(?string $value): bool
+    {
+        $normalized = $this->normalizePlaceholder($value);
+        return in_array($normalized, ['', 'n/d', 'nd', 'no registra'], true);
+    }
+
+    private function isUsefulPhone(?string $value): bool
+    {
+        return !$this->isMissingPhone($value);
+    }
+
+    private function normalizePlaceholder(?string $value): string
+    {
+        $value = mb_strtolower(trim((string) $value), 'UTF-8');
+        return preg_replace('/\s+/u', ' ', $value) ?? $value;
     }
 }

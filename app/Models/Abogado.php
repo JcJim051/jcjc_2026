@@ -23,4 +23,9 @@ class Abogado extends Model
             ->withTimestamps()
             ->orderByDesc('fecha');
     }
+
+    public function phoneUpdates()
+    {
+        return $this->hasMany(AbogadoPhoneUpdate::class);
+    }
 }
