@@ -67,6 +67,8 @@ class AsistenciaCompletaTelefonoTest extends TestCase
             $table->unsignedBigInteger('asistencia_session_id');
             $table->string('old_phone')->nullable();
             $table->string('new_phone');
+            $table->string('old_email')->nullable();
+            $table->string('new_email')->nullable();
             $table->string('source', 50);
             $table->timestamps();
         });
@@ -84,81 +86,129 @@ class AsistenciaCompletaTelefonoTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_completa_telefono_faltante_y_registra_auditoria_y_asistencia()
+    public function test_consulta_por_cedula_carga_datos_completos()
     {
-        [$abogado, $session, $payload] = $this->scenario('N/D');
-        $payload['telefono'] = 'Cel. 310 555 0101';
+        [$abogado, $session, $payload] = $this->scenario('3105550101');
+
+        $response = $this->postJson(route('asistencia.reunion.lookup', $session->public_token), [
+            'cc' => '1.030.590.916',
+            'slot' => $payload['slot'],
+            'token' => $payload['token'],
+        ]);
+
+        $response->assertOk()->assertExactJson([
+            'nombre' => $abogado->nombre,
+            'correo' => $abogado->correo,
+            'telefono' => $abogado->telefono,
+        ]);
+    }
+
+    public function test_consulta_bloquea_cedula_inexistente_o_duplicada()
+    {
+        [, $session, $payload] = $this->scenario('3105550101');
+
+        $this->postJson(route('asistencia.reunion.lookup', $session->public_token), array_merge($payload, [
+            'cc' => '999999999',
+        ]))->assertNotFound();
+
+        Abogado::create([
+            'nombre' => 'Registro duplicado',
+            'cc' => '1030590916',
+            'correo' => 'duplicado@example.com',
+            'telefono' => '3110000000',
+            'activo' => true,
+        ]);
+
+        $this->postJson(route('asistencia.reunion.lookup', $session->public_token), array_merge($payload, [
+            'cc' => '1030590916',
+        ]))->assertStatus(409);
+    }
+
+    public function test_datos_sin_cambios_registran_asistencia_sin_auditoria()
+    {
+        [$abogado, $session, $payload] = $this->scenario('310 555-0101');
+        $payload['telefono'] = '3105550101';
 
         $response = $this->post(route('asistencia.reunion.submit', $session->public_token), $payload);
 
-        $response->assertSessionHas('info', 'Asistencia registrada y celular agregado correctamente a tu caracterización.');
-        $this->assertSame('Cel. 310 555 0101', $abogado->fresh()->telefono);
+        $response->assertSessionHas('attendance_registered', true);
         $this->assertDatabaseHas('controls', [
             'codigo_abogado' => (string) $abogado->id,
             'asistencia_session_id' => $session->id,
         ]);
+        $this->assertDatabaseCount('abogado_phone_updates', 0);
+    }
+
+    public function test_actualiza_correo_y_telefono_y_registra_auditoria()
+    {
+        [$abogado, $session, $payload] = $this->scenario('N/D');
+        $payload['correo'] = 'NUEVO@Example.com';
+        $payload['telefono'] = 'Cel. 310 555 0101';
+
+        $response = $this->post(route('asistencia.reunion.submit', $session->public_token), $payload);
+
+        $response->assertSessionHas('info', 'Asistencia registrada y datos de contacto actualizados correctamente.');
+        $abogado->refresh();
+        $this->assertSame('nuevo@example.com', $abogado->correo);
+        $this->assertSame('Cel. 310 555 0101', $abogado->telefono);
         $this->assertDatabaseHas('abogado_phone_updates', [
             'abogado_id' => $abogado->id,
             'reunion_id' => $session->reunion_id,
             'asistencia_session_id' => $session->id,
             'old_phone' => 'N/D',
             'new_phone' => 'Cel. 310 555 0101',
+            'old_email' => 'abogada@example.com',
+            'new_email' => 'nuevo@example.com',
             'source' => 'asistencia',
         ]);
     }
 
-    public function test_rechaza_correo_incorrecto_sin_actualizar_telefono()
+    public function test_correo_de_otra_persona_bloquea_cambios_y_asistencia()
     {
-        [$abogado, $session, $payload] = $this->scenario(null);
-        $payload['correo'] = 'otro@example.com';
-        $payload['telefono'] = '3105550101';
+        [$abogado, $session, $payload] = $this->scenario('3105550101');
+        Abogado::create([
+            'nombre' => 'Otra persona',
+            'cc' => '111111111',
+            'correo' => 'ocupado@example.com',
+            'telefono' => '3200000000',
+            'activo' => true,
+        ]);
+        $payload['correo'] = 'OCUPADO@example.com';
+        $payload['telefono'] = '3150000000';
 
         $response = $this->post(route('asistencia.reunion.submit', $session->public_token), $payload);
 
         $response->assertSessionHasErrors('error');
-        $this->assertNull($abogado->fresh()->telefono);
+        $abogado->refresh();
+        $this->assertSame('abogada@example.com', $abogado->correo);
+        $this->assertSame('3105550101', $abogado->telefono);
         $this->assertDatabaseCount('controls', 0);
         $this->assertDatabaseCount('abogado_phone_updates', 0);
     }
 
-    public function test_telefono_existente_debe_coincidir_y_no_se_reemplaza()
+    public function test_abogado_inactivo_puede_consultar_y_registrar_asistencia()
     {
-        [$abogado, $session, $payload] = $this->scenario('310 555-0101');
-        $payload['telefono'] = '3200000000';
+        [$abogado, $session, $payload] = $this->scenario('3105550101', false);
 
-        $response = $this->post(route('asistencia.reunion.submit', $session->public_token), $payload);
+        $this->postJson(route('asistencia.reunion.lookup', $session->public_token), $payload)->assertOk();
+        $this->post(route('asistencia.reunion.submit', $session->public_token), $payload)
+            ->assertSessionHas('attendance_registered', true);
 
-        $response->assertSessionHasErrors('error');
-        $this->assertSame('310 555-0101', $abogado->fresh()->telefono);
-        $this->assertDatabaseCount('controls', 0);
-        $this->assertDatabaseCount('abogado_phone_updates', 0);
-    }
-
-    public function test_telefono_existente_normalizado_permite_asistencia()
-    {
-        [$abogado, $session, $payload] = $this->scenario('310 555-0101');
-        $payload['telefono'] = '3105550101';
-
-        $response = $this->post(route('asistencia.reunion.submit', $session->public_token), $payload);
-
-        $response->assertSessionHas('info', 'Asistencia registrada con éxito.');
-        $this->assertSame('310 555-0101', $abogado->fresh()->telefono);
         $this->assertDatabaseHas('controls', [
             'codigo_abogado' => (string) $abogado->id,
             'asistencia_session_id' => $session->id,
         ]);
-        $this->assertDatabaseCount('abogado_phone_updates', 0);
     }
 
-    public function test_no_acepta_placeholder_como_telefono_nuevo()
+    public function test_no_acepta_placeholder_como_telefono()
     {
-        [$abogado, $session, $payload] = $this->scenario('');
+        [$abogado, $session, $payload] = $this->scenario('3105550101');
         $payload['telefono'] = 'No registra';
 
         $response = $this->post(route('asistencia.reunion.submit', $session->public_token), $payload);
 
         $response->assertSessionHasErrors('telefono');
-        $this->assertSame('', $abogado->fresh()->telefono);
+        $this->assertSame('3105550101', $abogado->fresh()->telefono);
         $this->assertDatabaseCount('controls', 0);
     }
 
@@ -171,20 +221,29 @@ class AsistenciaCompletaTelefonoTest extends TestCase
             'fecha' => now(),
         ]);
 
-        $response = $this->post(route('asistencia.reunion.submit', $session->public_token), $payload);
-
-        $response->assertSessionHasErrors('error');
+        $this->postJson(route('asistencia.reunion.lookup', $session->public_token), $payload)->assertStatus(409);
+        $this->post(route('asistencia.reunion.submit', $session->public_token), $payload)
+            ->assertSessionHasErrors('error');
         $this->assertDatabaseCount('controls', 1);
     }
 
-    private function scenario(?string $telefono): array
+    public function test_enlace_sin_firma_muestra_estado_vencido()
+    {
+        [, $session] = $this->scenario('3105550101');
+
+        $this->get(route('asistencia.reunion.form', $session->public_token))
+            ->assertStatus(410)
+            ->assertSee('Este enlace ya caducó');
+    }
+
+    private function scenario(?string $telefono, bool $activo = true): array
     {
         $abogado = Abogado::create([
             'nombre' => 'Abogada Prueba',
             'cc' => '1.030.590.916',
             'correo' => 'abogada@example.com',
             'telefono' => $telefono,
-            'activo' => true,
+            'activo' => $activo,
         ]);
         $reunion = Reunion::create([
             'fecha' => now()->toDateString(),
@@ -205,7 +264,7 @@ class AsistenciaCompletaTelefonoTest extends TestCase
             'correo' => 'abogada@example.com',
             'telefono' => $telefono ?: '3105550101',
             'slot' => $slot,
-            'token' => hash_hmac('sha256', $session->id . '|' . $slot, config('app.key')),
+            'token' => hash_hmac('sha256', $session->id.'|'.$slot, config('app.key')),
         ]];
     }
 }

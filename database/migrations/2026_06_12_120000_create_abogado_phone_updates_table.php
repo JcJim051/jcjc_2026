@@ -10,9 +10,10 @@ return new class extends Migration
     {
         Schema::create('abogado_phone_updates', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('abogado_id')->constrained('abogados')->cascadeOnDelete();
-            $table->foreignId('reunion_id')->constrained('reuniones')->cascadeOnDelete();
-            $table->foreignId('asistencia_session_id')->constrained('asistencia_sessions')->cascadeOnDelete();
+            // El esquema histórico usa tipos de ID distintos entre módulos.
+            $table->unsignedBigInteger('abogado_id')->index();
+            $table->unsignedBigInteger('reunion_id')->index();
+            $table->unsignedBigInteger('asistencia_session_id')->index();
             $table->string('old_phone')->nullable();
             $table->string('new_phone');
             $table->string('source', 50)->default('asistencia');

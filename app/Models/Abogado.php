@@ -28,4 +28,9 @@ class Abogado extends Model
     {
         return $this->hasMany(AbogadoPhoneUpdate::class);
     }
+
+    public function contactUpdates()
+    {
+        return $this->hasMany(AbogadoContactUpdate::class);
+    }
 }

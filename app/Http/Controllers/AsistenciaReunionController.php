@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Abogado;
-use App\Models\AbogadoPhoneUpdate;
+use App\Models\AbogadoContactUpdate;
 use App\Models\AsistenciaSession;
 use App\Models\Control;
 use BaconQrCode\Renderer\ImageRenderer;
@@ -21,10 +21,7 @@ class AsistenciaReunionController extends Controller
 
     public function panelReunion($token)
     {
-        $session = AsistenciaSession::with('reunion')
-            ->where('public_token', $token)
-            ->where('activa', true)
-            ->firstOrFail();
+        $session = $this->activeSession($token);
 
         $slot = (int) floor(Carbon::now('America/Bogota')->timestamp / 30);
         $signedPath = URL::temporarySignedRoute(
@@ -46,25 +43,61 @@ class AsistenciaReunionController extends Controller
 
     public function mostrarFormularioSesion(Request $request, $publicToken)
     {
-        $session = AsistenciaSession::with('reunion')
-            ->where('public_token', $publicToken)
-            ->where('activa', true)
-            ->firstOrFail();
-
+        $session = $this->activeSession($publicToken);
         $slot = (int) $request->query('slot');
         $hashToken = hash_hmac('sha256', $session->id.'|'.$slot, config('app.key'));
 
         return view('asistencia.session', compact('session', 'slot', 'hashToken', 'publicToken'));
     }
 
+    public function consultarAbogado(Request $request, $publicToken)
+    {
+        $session = $this->activeSession($publicToken);
+        $data = $request->validate([
+            'cc' => 'required|string|max:40',
+            'slot' => 'required|integer',
+            'token' => 'required|string',
+        ]);
+
+        if (!$this->hasValidFormToken($session, (int) $data['slot'], $data['token'])) {
+            return response()->json([
+                'message' => 'El formulario ya no es válido. Escanea nuevamente el código QR.',
+            ], 419);
+        }
+
+        $abogados = $this->abogadosByCedula($data['cc']);
+        if ($abogados->isEmpty()) {
+            return response()->json([
+                'message' => 'No encontramos una persona caracterizada con esa cédula.',
+            ], 404);
+        }
+
+        if ($abogados->count() > 1) {
+            return response()->json([
+                'message' => 'Encontramos más de un registro con esta cédula. Solicita apoyo a coordinación para revisar la caracterización.',
+            ], 409);
+        }
+
+        $abogado = $abogados->first();
+        if (Control::where('asistencia_session_id', $session->id)
+            ->where('codigo_abogado', (string) $abogado->id)
+            ->exists()) {
+            return response()->json([
+                'message' => 'Esta persona ya registró asistencia en la reunión.',
+            ], 409);
+        }
+
+        return response()->json([
+            'nombre' => $abogado->nombre,
+            'correo' => $abogado->correo,
+            'telefono' => $abogado->telefono,
+        ]);
+    }
+
     public function procesarFormularioSesion(Request $request, $publicToken)
     {
-        $session = AsistenciaSession::with('reunion')
-            ->where('public_token', $publicToken)
-            ->where('activa', true)
-            ->firstOrFail();
-
-        $request->validate([
+        $session = $this->activeSession($publicToken);
+        $data = $request->validate([
             'cc' => 'required|string|max:40',
             'correo' => 'required|email|max:255',
             'telefono' => 'required|string|max:50',
@@ -72,16 +105,15 @@ class AsistenciaReunionController extends Controller
             'token' => 'required|string',
         ]);
 
-        $slot = (int) $request->slot;
-
-        $tokenEsperado = hash_hmac('sha256', $session->id.'|'.$slot, config('app.key'));
-        if (!hash_equals($tokenEsperado, $request->token)) {
-            return redirect()->back()->withErrors(['error' => 'Token inválido.']);
+        if (!$this->hasValidFormToken($session, (int) $data['slot'], $data['token'])) {
+            return redirect()->back()
+                ->withErrors(['error' => 'El formulario ya no es válido. Escanea nuevamente el código QR.'])
+                ->withInput();
         }
 
-        $cedula = $this->normalizeDigits($request->cc);
-        $correo = mb_strtolower(trim((string) $request->correo));
-        $telefono = trim((string) $request->telefono);
+        $cedula = $this->normalizeDigits($data['cc']);
+        $correo = $this->normalizeEmail($data['correo']);
+        $telefono = trim((string) $data['telefono']);
 
         if (!$this->isUsefulPhone($telefono)) {
             return redirect()->back()->withErrors([
@@ -90,19 +122,15 @@ class AsistenciaReunionController extends Controller
         }
 
         $result = DB::transaction(function () use ($session, $cedula, $correo, $telefono) {
-            $abogado = Abogado::query()
-                ->whereRaw(
-                    "REPLACE(REPLACE(REPLACE(REPLACE(cc, '.', ''), ',', ''), '-', ''), ' ', '') = ?",
-                    [$cedula]
-                )
-                ->whereRaw('LOWER(TRIM(correo)) = ?', [$correo])
-                ->lockForUpdate()
-                ->first();
-
-            if (!$abogado) {
-                return ['error' => 'No encontramos una caracterización que coincida con la cédula y el correo ingresados.'];
+            $abogados = $this->abogadosByCedula($cedula, true);
+            if ($abogados->isEmpty()) {
+                return ['error' => 'No encontramos una persona caracterizada con esa cédula.'];
+            }
+            if ($abogados->count() > 1) {
+                return ['error' => 'Encontramos más de un registro con esta cédula. Solicita apoyo a coordinación.'];
             }
 
+            $abogado = $abogados->first();
             $codigoAbogado = (string) $abogado->id;
             if (Control::where('asistencia_session_id', $session->id)
                 ->where('codigo_abogado', $codigoAbogado)
@@ -110,23 +138,35 @@ class AsistenciaReunionController extends Controller
                 return ['error' => 'Ya registraste asistencia en esta reunión.'];
             }
 
-            $phoneCompleted = false;
-            if ($this->isMissingPhone($abogado->telefono)) {
-                $oldPhone = $abogado->telefono;
+            $correoOcupado = Abogado::query()
+                ->where('id', '<>', $abogado->id)
+                ->whereRaw('LOWER(TRIM(correo)) = ?', [$correo])
+                ->lockForUpdate()
+                ->exists();
+            if ($correoOcupado) {
+                return ['error' => 'El correo ingresado ya pertenece a otra caracterización. Usa otro correo o solicita apoyo a coordinación.'];
+            }
+
+            $oldEmail = $abogado->correo;
+            $oldPhone = $abogado->telefono;
+            $emailChanged = $this->normalizeEmail($oldEmail) !== $correo;
+            $phoneChanged = $this->normalizePhone($oldPhone) !== $this->normalizePhone($telefono);
+
+            if ($emailChanged || $phoneChanged) {
+                $abogado->correo = $correo;
                 $abogado->telefono = $telefono;
                 $abogado->save();
 
-                AbogadoPhoneUpdate::create([
+                AbogadoContactUpdate::create([
                     'abogado_id' => $abogado->id,
                     'reunion_id' => $session->reunion_id,
                     'asistencia_session_id' => $session->id,
                     'old_phone' => $oldPhone,
                     'new_phone' => $telefono,
+                    'old_email' => $oldEmail,
+                    'new_email' => $correo,
                     'source' => 'asistencia',
                 ]);
-                $phoneCompleted = true;
-            } elseif ($this->normalizePhone($abogado->telefono) !== $this->normalizePhone($telefono)) {
-                return ['error' => 'El celular no coincide con el registrado en tu caracterización. Verifica los datos o comunícate con coordinación.'];
             }
 
             $motivo = 'Asistencia reunión #'.$session->reunion->id;
@@ -144,18 +184,51 @@ class AsistenciaReunionController extends Controller
 
             $session->reunion->abogados()->syncWithoutDetaching([$abogado->id]);
 
-            return ['phone_completed' => $phoneCompleted];
+            return ['contact_updated' => $emailChanged || $phoneChanged];
         });
 
         if (!empty($result['error'])) {
             return redirect()->back()->withErrors(['error' => $result['error']])->withInput();
         }
 
-        $message = !empty($result['phone_completed'])
-            ? 'Asistencia registrada y celular agregado correctamente a tu caracterización.'
+        $message = !empty($result['contact_updated'])
+            ? 'Asistencia registrada y datos de contacto actualizados correctamente.'
             : 'Asistencia registrada con éxito.';
 
-        return redirect()->back()->with('info', $message);
+        return redirect()->back()
+            ->with('info', $message)
+            ->with('attendance_registered', true);
+    }
+
+    private function activeSession(string $publicToken): AsistenciaSession
+    {
+        return AsistenciaSession::with('reunion')
+            ->where('public_token', $publicToken)
+            ->where('activa', true)
+            ->firstOrFail();
+    }
+
+    private function hasValidFormToken(AsistenciaSession $session, int $slot, string $token): bool
+    {
+        $expected = hash_hmac('sha256', $session->id.'|'.$slot, config('app.key'));
+        return hash_equals($expected, $token);
+    }
+
+    private function abogadosByCedula(string $cedula, bool $lock = false)
+    {
+        $query = Abogado::query()
+            ->whereRaw(
+                "REPLACE(REPLACE(REPLACE(REPLACE(cc, '.', ''), ',', ''), '-', ''), ' ', '') = ?",
+                [$this->normalizeDigits($cedula)]
+            )
+            ->orderBy('id')
+            ->limit(2);
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->get();
     }
 
     private function normalizeDigits(?string $value): string
@@ -167,6 +240,11 @@ class AsistenciaReunionController extends Controller
     {
         $value = mb_strtolower(trim((string) $value), 'UTF-8');
         return preg_replace('/[\s\-\(\)\.]+/u', '', $value) ?? $value;
+    }
+
+    private function normalizeEmail(?string $value): string
+    {
+        return mb_strtolower(trim((string) $value), 'UTF-8');
     }
 
     private function isMissingPhone(?string $value): bool

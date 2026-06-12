@@ -12,7 +12,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -62,21 +61,44 @@ class PublicReferidosController extends Controller
         }
 
         $request->merge([
-            'cedula' => trim((string) $request->input('cedula')),
+            'cedula' => $this->normalizeCedula((string) $request->input('cedula')),
             'email' => mb_strtolower(trim((string) $request->input('email')), 'UTF-8'),
             'nombre' => trim((string) $request->input('nombre')),
             'telefono' => trim((string) $request->input('telefono')),
         ]);
 
         $data = $request->validate([
-            'cedula' => ['required', 'string', 'max:50', Rule::unique('personas', 'cedula')],
+            'cedula' => ['required', 'string', 'max:50'],
             'nombre' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('personas', 'email')],
+            'email' => ['required', 'email', 'max:255'],
             'telefono' => ['required', 'string', 'max:50'],
             'puesto_id' => ['required', 'integer', 'exists:eleccion_puestos,id'],
             'mesa_num' => ['required', 'integer', 'min:1'],
             'cedula_pdf' => ['required', 'file', 'mimes:pdf', 'max:2048'],
         ]);
+
+        $personas = $this->findPersonasByNormalizedCedula($data['cedula']);
+        if ($personas->count() > 1) {
+            return back()->withErrors([
+                'cedula' => 'Encontramos más de una persona con esta cédula. Solicita apoyo administrativo.',
+            ])->withInput();
+        }
+
+        $personaExistente = $personas->first();
+        if ($personaExistente && Referido::query()
+            ->where('persona_id', $personaExistente->id)
+            ->where('eleccion_id', $tokenRow->eleccion_id)
+            ->exists()) {
+            return back()->withErrors([
+                'cedula' => 'Esta persona ya está registrada en esta elección. Puedes editar o reactivar el registro existente.',
+            ])->withInput();
+        }
+
+        if ($this->emailBelongsToAnotherPerson($data['email'], $personaExistente?->id)) {
+            return back()->withErrors([
+                'email' => 'El correo pertenece a otra persona registrada. Verifica la información.',
+            ])->withInput();
+        }
 
         $puesto = EleccionPuesto::where('id', $data['puesto_id'])
             ->where('eleccion_id', $tokenRow->eleccion_id)
@@ -122,37 +144,104 @@ class PublicReferidosController extends Controller
         }
 
         $normalized = $this->normalizeName($data['nombre']);
-
         $pdfPath = $request->file('cedula_pdf')->store('cedulas', 'public');
 
-        DB::beginTransaction();
         try {
-            $personaId = Persona::insertGetId([
-                'cedula' => $data['cedula'],
-                'nombre' => $data['nombre'],
-                'nombre_original' => $data['nombre'],
-                'nombre_normalizado' => $normalized,
-                'email' => $data['email'],
-                'telefono' => $data['telefono'],
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            $result = DB::transaction(function () use ($data, $normalized, $pdfPath, $puesto, $tokenRow) {
+                $personas = $this->findPersonasByNormalizedCedula($data['cedula'], true);
+                if ($personas->count() > 1) {
+                    return [
+                        'field' => 'cedula',
+                        'message' => 'Encontramos más de una persona con esta cédula. Solicita apoyo administrativo.',
+                    ];
+                }
 
-            Referido::create([
-                'persona_id' => $personaId,
-                'eleccion_id' => $tokenRow->eleccion_id,
-                'eleccion_puesto_id' => $puesto->id,
-                'territorio_token_id' => $tokenRow->id,
-                'mesa_num' => (int) $data['mesa_num'],
-                'cedula_pdf_path' => $pdfPath,
-                'estado' => 'referido',
-                'observaciones' => null,
-            ]);
+                $persona = $personas->first();
+                if ($persona && Referido::query()
+                    ->where('persona_id', $persona->id)
+                    ->where('eleccion_id', $tokenRow->eleccion_id)
+                    ->lockForUpdate()
+                    ->exists()) {
+                    return [
+                        'field' => 'cedula',
+                        'message' => 'Esta persona ya está registrada en esta elección. Puedes editar o reactivar el registro existente.',
+                    ];
+                }
 
-            DB::commit();
+                if ($this->emailBelongsToAnotherPerson($data['email'], $persona?->id, true)) {
+                    return [
+                        'field' => 'email',
+                        'message' => 'El correo pertenece a otra persona registrada. Verifica la información.',
+                    ];
+                }
+
+                if ($persona) {
+                    $persona->update([
+                        'nombre' => $data['nombre'],
+                        'nombre_original' => $data['nombre'],
+                        'nombre_normalizado' => $normalized,
+                        'email' => $data['email'],
+                        'telefono' => $data['telefono'],
+                    ]);
+                } else {
+                    $persona = Persona::create([
+                        'cedula' => $data['cedula'],
+                        'nombre' => $data['nombre'],
+                        'nombre_original' => $data['nombre'],
+                        'nombre_normalizado' => $normalized,
+                        'email' => $data['email'],
+                        'telefono' => $data['telefono'],
+                    ]);
+                }
+
+                Referido::create([
+                    'persona_id' => $persona->id,
+                    'eleccion_id' => $tokenRow->eleccion_id,
+                    'eleccion_puesto_id' => $puesto->id,
+                    'territorio_token_id' => $tokenRow->id,
+                    'mesa_num' => (int) $data['mesa_num'],
+                    'cedula_pdf_path' => $pdfPath,
+                    'estado' => 'referido',
+                    'observaciones' => null,
+                ]);
+
+                return ['ok' => true];
+            });
+
+            if (empty($result['ok'])) {
+                Storage::disk('public')->delete($pdfPath);
+
+                return back()->withErrors([
+                    $result['field'] => $result['message'],
+                ])->withInput();
+            }
         } catch (\Throwable $e) {
-            DB::rollBack();
-            return back()->withErrors(['general' => 'Error al guardar: ' . $e->getMessage()]);
+            Storage::disk('public')->delete($pdfPath);
+
+            try {
+                $persona = $this->findPersonasByNormalizedCedula($data['cedula'])->first();
+                if ($persona && Referido::query()
+                    ->where('persona_id', $persona->id)
+                    ->where('eleccion_id', $tokenRow->eleccion_id)
+                    ->exists()) {
+                    return back()->withErrors([
+                        'cedula' => 'Esta persona ya está registrada en esta elección. Puedes editar o reactivar el registro existente.',
+                    ])->withInput();
+                }
+                if ($this->emailBelongsToAnotherPerson($data['email'], $persona?->id)) {
+                    return back()->withErrors([
+                        'email' => 'El correo pertenece a otra persona registrada. Verifica la información.',
+                    ])->withInput();
+                }
+            } catch (\Throwable $diagnosticError) {
+                // Conservamos el error original y evitamos exponer detalles SQL al usuario.
+            }
+
+            report($e);
+
+            return back()->withErrors([
+                'general' => 'No pudimos guardar el referido. Verifica la información e intenta nuevamente.',
+            ])->withInput();
         }
 
         return redirect()->route('public.referidos.form', $token)
@@ -520,25 +609,34 @@ class PublicReferidosController extends Controller
             ->where('territorio_token_id', $tokenRow->id)
             ->firstOrFail();
 
+        $request->merge([
+            'cedula' => $this->normalizeCedula((string) $request->input('cedula')),
+            'email' => mb_strtolower(trim((string) $request->input('email')), 'UTF-8'),
+            'nombre' => trim((string) $request->input('nombre')),
+            'telefono' => trim((string) $request->input('telefono')),
+        ]);
+
         $data = $request->validate([
-            'cedula' => [
-                'required',
-                'string',
-                'max:50',
-                Rule::unique('personas', 'cedula')->ignore($referido->persona_id),
-            ],
+            'cedula' => ['required', 'string', 'max:50'],
             'nombre' => ['required', 'string', 'max:255'],
-            'email' => [
-                'required',
-                'email',
-                'max:255',
-                Rule::unique('personas', 'email')->ignore($referido->persona_id),
-            ],
+            'email' => ['required', 'email', 'max:255'],
             'telefono' => ['required', 'string', 'max:50'],
             'puesto_id' => ['required', 'integer', 'exists:eleccion_puestos,id'],
             'mesa_num' => ['required', 'integer', 'min:1'],
             'cedula_pdf' => ['nullable', 'file', 'mimes:pdf', 'max:2048'],
         ]);
+
+        $personasCedula = $this->findPersonasByNormalizedCedula($data['cedula']);
+        if ($personasCedula->contains(fn ($persona) => (int) $persona->id !== (int) $referido->persona_id)) {
+            return back()->withErrors([
+                'cedula' => 'La cédula pertenece a otra persona registrada. Verifica la información.',
+            ])->withInput();
+        }
+        if ($this->emailBelongsToAnotherPerson($data['email'], (int) $referido->persona_id)) {
+            return back()->withErrors([
+                'email' => 'El correo pertenece a otra persona registrada. Verifica la información.',
+            ])->withInput();
+        }
 
         $puesto = EleccionPuesto::where('id', $data['puesto_id'])
             ->where('eleccion_id', $referido->eleccion_id)
@@ -581,41 +679,62 @@ class PublicReferidosController extends Controller
             return back()->withErrors(['mesa_num' => 'La mesa seleccionada ya no esta disponible.'])->withInput();
         }
 
-        DB::beginTransaction();
+        $nuevoPdfPath = null;
         try {
-            $nuevoPdfPath = null;
             if ($request->hasFile('cedula_pdf')) {
                 $nuevoPdfPath = $request->file('cedula_pdf')->store('cedulas', 'public');
             }
 
-            DB::table('personas')
-                ->where('id', $referido->persona_id)
-                ->update([
+            $pdfAnterior = $referido->cedula_pdf_path;
+
+            DB::transaction(function () use ($data, $referido, $nuevoPdfPath) {
+                $persona = Persona::query()->whereKey($referido->persona_id)->lockForUpdate()->firstOrFail();
+                $personasCedula = $this->findPersonasByNormalizedCedula($data['cedula'], true);
+                if ($personasCedula->contains(fn ($item) => (int) $item->id !== (int) $persona->id)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'cedula' => 'La cédula pertenece a otra persona registrada. Verifica la información.',
+                    ]);
+                }
+                if ($this->emailBelongsToAnotherPerson($data['email'], (int) $persona->id, true)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'email' => 'El correo pertenece a otra persona registrada. Verifica la información.',
+                    ]);
+                }
+
+                $persona->update([
                     'cedula' => $data['cedula'],
                     'nombre' => $data['nombre'],
                     'nombre_original' => $data['nombre'],
                     'nombre_normalizado' => $this->normalizeName($data['nombre']),
                     'email' => $data['email'],
                     'telefono' => $data['telefono'],
-                    'updated_at' => now(),
                 ]);
 
-            $pdfAnterior = $referido->cedula_pdf_path;
-            $referido->eleccion_puesto_id = (int) $data['puesto_id'];
-            $referido->mesa_num = (int) $data['mesa_num'];
-            if ($nuevoPdfPath) {
-                $referido->cedula_pdf_path = $nuevoPdfPath;
-            }
-            $referido->save();
+                $referido->eleccion_puesto_id = (int) $data['puesto_id'];
+                $referido->mesa_num = (int) $data['mesa_num'];
+                if ($nuevoPdfPath) {
+                    $referido->cedula_pdf_path = $nuevoPdfPath;
+                }
+                $referido->save();
+            });
 
             if ($nuevoPdfPath && !empty($pdfAnterior) && $pdfAnterior !== $nuevoPdfPath) {
                 Storage::disk('public')->delete($pdfAnterior);
             }
-
-            DB::commit();
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            if ($nuevoPdfPath) {
+                Storage::disk('public')->delete($nuevoPdfPath);
+            }
+            throw $e;
         } catch (\Throwable $e) {
-            DB::rollBack();
-            return back()->withErrors(['general' => 'Error al actualizar: ' . $e->getMessage()])->withInput();
+            if ($nuevoPdfPath) {
+                Storage::disk('public')->delete($nuevoPdfPath);
+            }
+            report($e);
+
+            return back()->withErrors([
+                'general' => 'No pudimos actualizar el referido. Verifica la información e intenta nuevamente.',
+            ])->withInput();
         }
 
         return redirect()->route('public.referidos.seguimiento', $tokenRow->token)
@@ -821,6 +940,42 @@ class PublicReferidosController extends Controller
         $value = preg_replace('/[^a-z0-9\s]/', '', $value);
         $value = preg_replace('/\s+/', ' ', $value);
         return trim($value);
+    }
+
+    private function normalizeCedula(?string $value): string
+    {
+        return preg_replace('/[\s.,-]+/', '', trim((string) $value)) ?? '';
+    }
+
+    private function findPersonasByNormalizedCedula(string $cedula, bool $lock = false)
+    {
+        $normalized = $this->normalizeCedula($cedula);
+        $query = Persona::query()
+            ->whereRaw(
+                "REPLACE(REPLACE(REPLACE(REPLACE(cedula, '.', ''), ',', ''), '-', ''), ' ', '') = ?",
+                [$normalized]
+            )
+            ->orderBy('id')
+            ->limit(2);
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->get();
+    }
+
+    private function emailBelongsToAnotherPerson(string $email, ?int $personaId = null, bool $lock = false): bool
+    {
+        $query = Persona::query()
+            ->whereRaw('LOWER(TRIM(email)) = ?', [mb_strtolower(trim($email), 'UTF-8')])
+            ->when($personaId, fn ($q) => $q->where('id', '<>', $personaId));
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->exists();
     }
 
     private function getMesasDisponibles(int $eleccionId, int $puestoId, int $excludeReferidoId = 0)

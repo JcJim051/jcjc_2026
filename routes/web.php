@@ -66,6 +66,9 @@ Route::get('/asistencia/reunion/{token}/panel', [AsistenciaReunionController::cl
 Route::get('/asistencia/reunion/{token}', [AsistenciaReunionController::class, 'mostrarFormularioSesion'])
     ->middleware('signed:relative')
     ->name('asistencia.reunion.form');
+Route::post('/asistencia/reunion/{token}/consultar', [AsistenciaReunionController::class, 'consultarAbogado'])
+    ->middleware('throttle:attendance-lookup')
+    ->name('asistencia.reunion.lookup');
 Route::post('/asistencia/reunion/{token}', [AsistenciaReunionController::class, 'procesarFormularioSesion'])
     ->name('asistencia.reunion.submit');
 
