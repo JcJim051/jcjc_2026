@@ -15,6 +15,8 @@ use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
 use BaconQrCode\Writer;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class TerritorioTokensController extends Controller
 {
@@ -31,16 +33,14 @@ class TerritorioTokensController extends Controller
     {
         [, $tokens] = $this->buildTokensDataset((int) $request->get('eleccion_id'));
 
-        $fileName = 'tokens_territoriales_' . now()->format('Ymd_His') . '.csv';
-        $headers = [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ];
+        $fileName = 'tokens_territoriales_' . now()->format('Ymd_His') . '.xlsx';
 
         return response()->streamDownload(function () use ($tokens) {
-            $out = fopen('php://output', 'w');
-            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Tokens');
 
-            fputcsv($out, [
+            $headers = [
                 'ID',
                 'Tipo',
                 'Encargado',
@@ -60,13 +60,22 @@ class TerritorioTokensController extends Controller
                 'Faltan',
                 'Faltan pactada',
                 'Token',
+                'Links',
                 'Activo',
                 'Expira',
                 'Creado',
-            ]);
+            ];
+            $sheet->fromArray($headers, null, 'A1');
 
+            $row = 2;
             foreach ($tokens as $t) {
-                fputcsv($out, [
+                $links = [];
+                if (!$t->es_consulta) {
+                    $links[] = 'Formulario: ' . route('public.referidos.form', $t->token);
+                }
+                $links[] = 'Seguimiento: ' . route('public.referidos.seguimiento', $t->token);
+
+                $sheet->fromArray([
                     $t->id,
                     $t->es_consulta ? 'Consulta' : 'Referidos',
                     $t->responsable ?: 'N/D',
@@ -86,14 +95,24 @@ class TerritorioTokensController extends Controller
                     (int) ($t->faltan_total ?? 0),
                     (int) ($t->faltan_pactada ?? 0),
                     $t->token,
+                    implode(' | ', $links),
                     $t->activo ? 'SI' : 'NO',
                     optional($t->expires_at)->format('Y-m-d H:i:s'),
                     optional($t->created_at)->format('Y-m-d H:i:s'),
-                ]);
+                ], null, 'A' . $row);
+                $row++;
             }
 
-            fclose($out);
-        }, $fileName, $headers);
+            foreach (range('A', 'W') as $column) {
+                $sheet->getColumnDimension($column)->setAutoSize(true);
+            }
+
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+            $spreadsheet->disconnectWorksheets();
+        }, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     private function buildTokensDataset(?int $requestedEleccionId = null): array
@@ -418,10 +437,10 @@ class TerritorioTokensController extends Controller
             // En consulta multi-municipio no usamos comuna de filtro.
             $token->comuna = null;
         } else {
-            $token->comuna = $data['comuna'] ?? null;
+            $token->comuna = $this->normalizeComunasInput($data['comuna'] ?? null);
         }
 
-        $token->responsable = $data['responsable'] ?? null;
+        $token->responsable = trim((string) ($data['responsable'] ?? '')) ?: null;
         $token->expires_at = $data['expires_at'] ?? null;
         $token->activo = (bool) ($data['activo'] ?? $token->activo);
         $token->save();

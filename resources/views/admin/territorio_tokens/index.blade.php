@@ -173,7 +173,22 @@
                             <td>{{ $t->activo ? 'SI' : 'NO' }}</td>
                             <td>
                                 <div class="d-flex" style="gap:6px;">
-                                    <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#editTokenModal{{ $t->id }}">Editar</button>
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm btn-info js-open-token-edit"
+                                        data-update-url="{{ route('admin.territorio_tokens.update', $t) }}"
+                                        data-token-id="{{ $t->id }}"
+                                        data-responsable="{{ $t->responsable }}"
+                                        data-comuna="{{ $t->comuna }}"
+                                        data-expires-at="{{ optional($t->expires_at)->format('Y-m-d') }}"
+                                        data-activo="{{ $t->activo ? 1 : 0 }}"
+                                        data-es-consulta="{{ $t->es_consulta ? 1 : 0 }}"
+                                        data-eleccion-id="{{ $t->eleccion_id }}"
+                                        data-municipios='@json($t->municipios ?? [])'
+                                        data-toggle="modal"
+                                        data-target="#editTokenModal">
+                                        Editar
+                                    </button>
                                     @if(!$t->es_consulta)
                                         <a href="{{ route('admin.territorio_tokens.projection', ['token' => $t, 'target' => 'formulario']) }}"
                                            target="_blank"
@@ -198,74 +213,59 @@
                                         <button class="btn btn-sm btn-danger" type="submit">Borrar</button>
                                     </form>
                                 </div>
-
-                                <div class="modal fade" id="editTokenModal{{ $t->id }}" tabindex="-1" role="dialog" aria-hidden="true">
-                                    <div class="modal-dialog" role="document">
-                                        <div class="modal-content">
-                                            <div class="modal-header bg-info">
-                                                <h5 class="modal-title">Editar token #{{ $t->id }}</h5>
-                                                <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
-                                                    <span aria-hidden="true">&times;</span>
-                                                </button>
-                                            </div>
-                                            <form action="{{ route('admin.territorio_tokens.update', $t) }}" method="POST">
-                                                @csrf
-                                                @method('PUT')
-                                                <div class="modal-body">
-                                                    <div class="form-group">
-                                                        <label>Responsable</label>
-                                                        <input type="text" name="responsable" class="form-control" value="{{ $t->responsable }}">
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label>Comuna</label>
-                                                        <input type="text" name="comuna" class="form-control" value="{{ $t->comuna }}" {{ $t->es_consulta ? 'disabled' : '' }} placeholder="Ej: 01COMUNA 1,02COMUNA 2">
-                                                    </div>
-                                                    @if($t->es_consulta)
-                                                        <div class="form-group">
-                                                            <label>Municipios (solo consulta)</label>
-                                                            <select name="municipios_multi[]" class="form-control municipios-edit-select" data-eleccion="{{ $t->eleccion_id }}" data-preview="#municipios_edit_preview_{{ $t->id }}" multiple required>
-                                                                @foreach(($t->municipios ?? []) as $geo)
-                                                                    @php
-                                                                        $munOpt = \App\Models\EleccionPuesto::where('eleccion_id', $t->eleccion_id)
-                                                                            ->where('dd', explode('-', $geo)[0] ?? '')
-                                                                            ->where('mm', explode('-', $geo)[1] ?? '')
-                                                                            ->select('departamento', 'municipio')
-                                                                            ->first();
-                                                                    @endphp
-                                                                    <option value="{{ $geo }}" selected>
-                                                                        {{ ($munOpt->departamento ?? 'N/D') . ' / ' . ($munOpt->municipio ?? $geo) }}
-                                                                    </option>
-                                                                @endforeach
-                                                            </select>
-                                                            <small class="text-muted d-block mt-1">Seleccionados:</small>
-                                                            <div id="municipios_edit_preview_{{ $t->id }}" class="municipios-preview text-muted">Sin selección</div>
-                                                        </div>
-                                                    @endif
-                                                    <div class="form-group">
-                                                        <label>Expira</label>
-                                                        <input type="date" name="expires_at" class="form-control" value="{{ optional($t->expires_at)->format('Y-m-d') }}">
-                                                    </div>
-                                                    <div class="form-group mb-0">
-                                                        <label>Activo</label>
-                                                        <select name="activo" class="form-control">
-                                                            <option value="1" {{ $t->activo ? 'selected' : '' }}>Sí</option>
-                                                            <option value="0" {{ !$t->activo ? 'selected' : '' }}>No</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                                <div class="modal-footer">
-                                                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
-                                                    <button type="submit" class="btn btn-primary">Guardar</button>
-                                                </div>
-                                            </form>
-                                        </div>
-                                    </div>
-                                </div>
                             </td>
                         </tr>
                     @endforeach
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <div class="modal fade" id="editTokenModal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header bg-info">
+                    <h5 class="modal-title" id="editTokenModalTitle">Editar token</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <form id="editTokenForm" action="#" method="POST">
+                    @csrf
+                    @method('PUT')
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>Responsable</label>
+                            <input type="text" name="responsable" id="edit_responsable" class="form-control">
+                        </div>
+                        <div class="form-group" id="edit_comuna_wrap">
+                            <label>Comuna</label>
+                            <input type="text" name="comuna" id="edit_comuna" class="form-control" placeholder="Ej: 01COMUNA 1,02COMUNA 2">
+                        </div>
+                        <div class="form-group" id="edit_municipios_wrap" style="display:none;">
+                            <label>Municipios (solo consulta)</label>
+                            <select name="municipios_multi[]" id="edit_municipios_multi" class="form-control" multiple></select>
+                            <small class="text-muted d-block mt-1">Seleccionados:</small>
+                            <div id="edit_municipios_preview" class="municipios-preview text-muted">Sin selección</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Expira</label>
+                            <input type="date" name="expires_at" id="edit_expires_at" class="form-control">
+                        </div>
+                        <div class="form-group mb-0">
+                            <label>Activo</label>
+                            <select name="activo" id="edit_activo" class="form-control">
+                                <option value="1">Sí</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+                        <button type="submit" class="btn btn-primary">Guardar</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 @stop
@@ -392,28 +392,25 @@ $(function(){
         }
     });
 
-    $('.municipios-edit-select').each(function () {
-        var $el = $(this);
-        $el.select2({
-            placeholder: 'Seleccione uno o varios municipios',
-            width: '100%',
-            closeOnSelect: false,
-            dropdownParent: $el.closest('.modal'),
-            ajax: {
-                url: '{{ route('admin.territorio_tokens.municipios') }}',
-                dataType: 'json',
-                delay: 250,
-                data: function (params) {
-                    return {
-                        q: params.term,
-                        eleccion_id: $el.data('eleccion')
-                    };
-                },
-                processResults: function (data) {
-                    return data;
-                }
+    $('#edit_municipios_multi').select2({
+        placeholder: 'Seleccione uno o varios municipios',
+        width: '100%',
+        closeOnSelect: false,
+        dropdownParent: $('#editTokenModal'),
+        ajax: {
+            url: '{{ route('admin.territorio_tokens.municipios') }}',
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return {
+                    q: params.term,
+                    eleccion_id: $('#editTokenModal').data('eleccion-id')
+                };
+            },
+            processResults: function (data) {
+                return data;
             }
-        });
+        }
     });
 
     $('#comuna').select2({
@@ -502,13 +499,40 @@ $(function(){
         compactMultiSelect($(this));
     });
 
-    $('.municipios-edit-select').on('change', function () {
+    compactMultiSelect($('#municipios_multi'));
+    $('#edit_municipios_multi').on('change', function () {
         compactMultiSelect($(this));
     });
 
-    compactMultiSelect($('#municipios_multi'));
-    $('.municipios-edit-select').each(function () {
-        compactMultiSelect($(this));
+    $(document).on('click', '.js-open-token-edit', function () {
+        var $btn = $(this);
+        var municipios = $btn.data('municipios') || [];
+        var esConsulta = String($btn.data('es-consulta')) === '1';
+        var eleccionId = $btn.data('eleccion-id');
+        var $modal = $('#editTokenModal');
+        var $municipios = $('#edit_municipios_multi');
+
+        $('#editTokenForm').attr('action', $btn.data('update-url'));
+        $('#editTokenModalTitle').text('Editar token #' + $btn.data('token-id'));
+        $('#edit_responsable').val($btn.data('responsable') || '');
+        $('#edit_comuna').val($btn.data('comuna') || '');
+        $('#edit_expires_at').val($btn.data('expires-at') || '');
+        $('#edit_activo').val(String($btn.data('activo')) === '0' ? '0' : '1');
+
+        $modal.data('eleccion-id', eleccionId);
+        $('#edit_comuna_wrap').toggle(!esConsulta);
+        $('#edit_comuna').prop('disabled', esConsulta);
+        $('#edit_municipios_wrap').toggle(esConsulta);
+
+        $municipios.empty().trigger('change');
+        if (esConsulta) {
+            municipios.forEach(function (geo) {
+                var option = new Option(geo, geo, true, true);
+                $municipios.append(option);
+            });
+            $municipios.trigger('change');
+        }
+        compactMultiSelect($municipios);
     });
 
     $('#tokensTable').DataTable({
