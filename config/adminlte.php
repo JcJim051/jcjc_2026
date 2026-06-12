@@ -532,7 +532,7 @@ return [
   ]
 ],
 [    'header' => 'Centro de Datos',
-    'can'  => 'Superuser',
+    'can'  => 'Superuser-administrador-consultor-auditor',
 ],
 [   'text' => 'Elecciones y DIVIPOL',
     'route'  => 'admin.elecciones.index',
@@ -552,7 +552,7 @@ return [
 [   'text' => 'Tokens Territoriales',
     'route'  => 'admin.territorio_tokens.index',
     'icon' => 'fas fa-link',
-    'can'  => 'Superuser',
+    'can'  => 'Superuser-administrador-consultor-auditor',
 ],
 [   'text' => 'Referidos',
     'route'  => 'admin.referidos.index',
