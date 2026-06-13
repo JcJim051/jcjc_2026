@@ -102,28 +102,10 @@ class ConsultorController extends Controller
         $okmun = $lablemun;
         $nookmun = $lablemun;
 
-        $okaniv = (clone $base)
-            ->where('ep.mm', '001')
-            ->whereIn('r.estado', $this->mesaOkEstados)
-            ->distinct('r.id')
-            ->count('r.id');
-        $nookaniv = (clone $base)
-            ->where('ep.mm', '001')
-            ->where(function ($q) {
-                $q->whereNull('r.estado')->orWhereNotIn('r.estado', $this->mesaOkEstados);
-            })
-            ->count();
-        $okanim = (clone $base)
-            ->where('ep.mm', '<>', '001')
-            ->whereIn('r.estado', $this->mesaOkEstados)
-            ->distinct('r.id')
-            ->count('r.id');
-        $nookanim = (clone $base)
-            ->where('ep.mm', '<>', '001')
-            ->where(function ($q) {
-                $q->whereNull('r.estado')->orWhereNotIn('r.estado', $this->mesaOkEstados);
-            })
-            ->count();
+        $okaniv = $this->countOk(clone $villaBase);
+        $nookaniv = max(0, $totalv - $okaniv);
+        $okanim = $this->countOk(clone $munBase);
+        $nookanim = max(0, $totalm - $okanim);
 
         $puestosBase = $this->basePuestosQuery($eleccionId);
         $puestosd = (clone $puestosBase)->distinct('ep.id')->count('ep.id');
@@ -144,11 +126,11 @@ class ConsultorController extends Controller
             ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 101 THEN em.id END) as mesas_101')
             ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 103 THEN em.id END) as mesas_103')
             ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 4 THEN em.id END) as mesas_04')
-            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 101 AND ra.status_ok = 1 THEN em.id END) as ok_101')
-            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 103 AND ra.status_ok = 1 THEN em.id END) as ok_103')
-            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 4 AND ra.status_ok = 1 THEN em.id END) as ok_04')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 101 AND (ra.status_ok = 1 OR ca.status_ok = 1) THEN em.id END) as ok_101')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 103 AND (ra.status_ok = 1 OR ca.status_ok = 1) THEN em.id END) as ok_103')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN c.codigo = 4 AND (ra.status_ok = 1 OR ca.status_ok = 1) THEN em.id END) as ok_04')
             ->selectRaw('COUNT(DISTINCT em.id) as total_mesas')
-            ->selectRaw('COUNT(DISTINCT CASE WHEN ra.status_ok = 1 THEN em.id END) as total_ok')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN ra.status_ok = 1 OR ca.status_ok = 1 THEN em.id END) as total_ok')
             ->selectRaw('0 as rem')
             ->selectRaw('0 as rem_ok')
             ->groupBy('ep.dd', 'ep.mm', 'ep.zz', 'ep.pp', 'ep.municipio', 'ep.puesto')
@@ -170,7 +152,7 @@ class ConsultorController extends Controller
             ->whereIn('c.codigo', [101, 4, 103])
             ->select('c.codigo as candidato')
             ->selectRaw('COUNT(DISTINCT em.id) as total_mesas')
-            ->selectRaw('COUNT(DISTINCT CASE WHEN ra.status_ok = 1 THEN em.id END) as mesas_ok')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN ra.status_ok = 1 OR ca.status_ok = 1 THEN em.id END) as mesas_ok')
             ->groupBy('c.codigo')
             ->get()
             ->keyBy('candidato');
@@ -219,11 +201,23 @@ class ConsultorController extends Controller
             ->selectRaw("COALESCE(MAX(CASE WHEN estado <> 'rechazado' THEN id END), MAX(id)) as best_referido_id")
             ->groupBy('eleccion_puesto_id', 'mesa_num');
 
+        $coordinacionAgg = DB::table('abogado_coordinaciones as ac')
+            ->where('ac.eleccion_id', $eleccionId)
+            ->whereNull('ac.released_at')
+            ->whereNotNull('ac.eleccion_mesa_id')
+            ->select('ac.eleccion_mesa_id')
+            ->selectRaw("MAX(CASE WHEN ac.validacion_estado = 'validado' THEN 1 ELSE 0 END) as status_ok")
+            ->selectRaw("MAX(CASE WHEN ac.validacion_estado IN ('asignado', 'validado') THEN 1 ELSE 0 END) as occupied")
+            ->groupBy('ac.eleccion_mesa_id');
+
         $query = DB::table('eleccion_mesas as em')
             ->join('eleccion_puestos as ep', 'ep.id', '=', 'em.eleccion_puesto_id')
             ->leftJoinSub($referidoAgg, 'ra', function ($join) {
                 $join->on('ra.eleccion_puesto_id', '=', 'em.eleccion_puesto_id')
                     ->on('ra.mesa_num', '=', 'em.mesa_num');
+            })
+            ->leftJoinSub($coordinacionAgg, 'ca', function ($join) {
+                $join->on('ca.eleccion_mesa_id', '=', 'em.id');
             })
             ->leftJoin('referidos as r', 'r.id', '=', 'ra.best_referido_id')
             ->where('em.eleccion_id', $eleccionId);
@@ -343,17 +337,22 @@ class ConsultorController extends Controller
 
     private function countOk($query): int
     {
-        return (int) $query->where('ra.status_ok', 1)->count();
+        return (int) $query
+            ->where(function ($q) {
+                $q->where('ra.status_ok', 1)
+                    ->orWhere('ca.status_ok', 1);
+            })
+            ->count();
     }
 
     private function okSumSql(): string
     {
-        return 'SUM(CASE WHEN ra.status_ok = 1 THEN 1 ELSE 0 END)';
+        return 'SUM(CASE WHEN ra.status_ok = 1 OR ca.status_ok = 1 THEN 1 ELSE 0 END)';
     }
 
     private function pendingSumSql(): string
     {
-        return 'SUM(CASE WHEN ra.status_ok = 1 THEN 0 ELSE 1 END)';
+        return 'SUM(CASE WHEN ra.status_ok = 1 OR ca.status_ok = 1 THEN 0 ELSE 1 END)';
     }
 
     private function emptyMetrics($empty): array
