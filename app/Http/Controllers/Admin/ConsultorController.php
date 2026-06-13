@@ -206,7 +206,7 @@ class ConsultorController extends Controller
             ->whereNull('ac.released_at')
             ->whereNotNull('ac.eleccion_mesa_id')
             ->select('ac.eleccion_mesa_id')
-            ->selectRaw("MAX(CASE WHEN ac.validacion_estado = 'validado' THEN 1 ELSE 0 END) as status_ok")
+            ->selectRaw("MAX(CASE WHEN ac.validacion_estado IN ('asignado', 'validado') THEN 1 ELSE 0 END) as status_ok")
             ->selectRaw("MAX(CASE WHEN ac.validacion_estado IN ('asignado', 'validado') THEN 1 ELSE 0 END) as occupied")
             ->groupBy('ac.eleccion_mesa_id');
 
@@ -267,9 +267,10 @@ class ConsultorController extends Controller
         $coordinaciones = DB::table('abogado_coordinaciones')
             ->where('eleccion_id', $eleccionId)
             ->whereNull('released_at')
+            ->whereNull('eleccion_mesa_id')
             ->select('codpuesto')
             ->selectRaw('COUNT(*) as ocupados')
-            ->selectRaw("SUM(CASE WHEN validacion_estado = 'validado' THEN 1 ELSE 0 END) as ok")
+            ->selectRaw("SUM(CASE WHEN validacion_estado IN ('asignado', 'validado') THEN 1 ELSE 0 END) as ok")
             ->groupBy('codpuesto')
             ->get()
             ->keyBy('codpuesto');
