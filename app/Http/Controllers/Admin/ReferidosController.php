@@ -468,16 +468,20 @@ class ReferidosController extends Controller
     public function exportMeta(Request $request)
     {
         $data = $request->validate([
-            'tipo' => 'required|in:asignados,validados',
+            'tipo' => 'required|in:asignados,validados,total',
         ]);
 
-        $estadoObjetivo = $data['tipo'] === 'validados' ? 'validado' : 'asignado';
+        $tipo = (string) $data['tipo'];
         $eleccionId = $this->resolveEleccionId();
 
         $rows = DB::table('referidos as r')
             ->join('personas as p', 'p.id', '=', 'r.persona_id')
             ->join('eleccion_puestos as ep', 'ep.id', '=', 'r.eleccion_puesto_id')
-            ->where('r.estado', $estadoObjetivo)
+            ->when($tipo === 'total', function ($q) {
+                $q->whereIn('r.estado', ['asignado', 'validado']);
+            }, function ($q) use ($tipo) {
+                $q->where('r.estado', $tipo === 'validados' ? 'validado' : 'asignado');
+            })
             ->whereNotNull('r.mesa_num')
             ->when($eleccionId, function ($q) use ($eleccionId) {
                 $q->where('r.eleccion_id', $eleccionId);
@@ -525,7 +529,7 @@ class ReferidosController extends Controller
             ];
         }
 
-        $tipoLabel = $data['tipo'] === 'validados' ? 'validados' : 'asignados';
+        $tipoLabel = $tipo === 'validados' ? 'validados' : ($tipo === 'total' ? 'total' : 'asignados');
         $fileName = 'testigos_meta_' . $tipoLabel . '_' . now()->format('Ymd_His') . '.xlsx';
 
         $headings = [

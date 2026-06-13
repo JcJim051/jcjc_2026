@@ -182,6 +182,11 @@
                         <input type="hidden" name="tipo" value="validados">
                         <button type="submit" class="btn btn-success">Validados</button>
                     </form>
+                    <form action="{{ route('admin.referidos.export_meta') }}" method="POST" style="display:inline;">
+                        @csrf
+                        <input type="hidden" name="tipo" value="total">
+                        <button type="submit" class="btn btn-dark">Total</button>
+                    </form>
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
                 </div>
             </div>

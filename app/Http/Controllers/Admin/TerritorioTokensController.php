@@ -371,6 +371,24 @@ class TerritorioTokensController extends Controller
             ->with('success', 'Token creado correctamente.');
     }
 
+    public function bloquearTodos(Request $request)
+    {
+        $eleccionId = $this->resolveEleccionId((int) $request->get('eleccion_id'));
+
+        if (!$eleccionId) {
+            return redirect()->route('admin.territorio_tokens.index')
+                ->with('success', 'No se encontro una eleccion operativa para bloquear tokens.');
+        }
+
+        $updated = TerritorioToken::query()
+            ->where('eleccion_id', $eleccionId)
+            ->where('activo', true)
+            ->update(['activo' => false]);
+
+        return redirect()->route('admin.territorio_tokens.index', ['eleccion_id' => $eleccionId])
+            ->with('success', 'Tokens bloqueados: ' . $updated);
+    }
+
     public function projection(Request $request, TerritorioToken $token)
     {
         $target = $request->get('target') === 'seguimiento' || $token->es_consulta

@@ -98,7 +98,12 @@
     <div class="card">
         <div class="card-header">
             <h3 class="card-title">Tokens existentes</h3>
-            <div class="card-tools">
+            <div class="card-tools d-flex" style="gap:8px;">
+                <form action="{{ route('admin.territorio_tokens.bloquear_todos') }}" method="POST" onsubmit="return confirm('¿Bloquear todos los tokens de la eleccion seleccionada?');">
+                    @csrf
+                    <input type="hidden" name="eleccion_id" value="{{ $eleccionId ?? '' }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Bloquear todos</button>
+                </form>
                 <a href="{{ route('admin.territorio_tokens.export', ['eleccion_id' => $eleccionId ?? null]) }}" class="btn btn-sm btn-success">
                     Descargar tabla
                 </a>
