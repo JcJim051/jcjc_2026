@@ -475,37 +475,90 @@ class ReferidosController extends Controller
         $tipo = (string) $data['tipo'];
         $eleccionId = $this->resolveEleccionId();
 
-        $rows = DB::table('referidos as r')
-            ->join('personas as p', 'p.id', '=', 'r.persona_id')
-            ->join('eleccion_puestos as ep', 'ep.id', '=', 'r.eleccion_puesto_id')
-            ->when($tipo === 'total', function ($q) {
-                $q->whereIn('r.estado', ['asignado', 'validado']);
-            }, function ($q) use ($tipo) {
-                $q->where('r.estado', $tipo === 'validados' ? 'validado' : 'asignado');
-            })
-            ->whereNotNull('r.mesa_num')
-            ->when($eleccionId, function ($q) use ($eleccionId) {
-                $q->where('r.eleccion_id', $eleccionId);
-            })
-            ->orderBy('ep.dd')
-            ->orderBy('ep.mm')
-            ->orderBy('ep.zz')
-            ->orderBy('ep.pp')
-            ->orderBy('r.mesa_num')
-            ->get([
-                'ep.dd',
-                'ep.departamento',
-                'ep.mm',
-                'ep.municipio',
-                'ep.zz',
-                'ep.pp',
-                'ep.puesto',
-                'r.mesa_num',
-                'p.cedula',
-                'p.nombre',
-                'p.telefono',
-                'p.email',
-            ]);
+        if ($tipo === 'total') {
+            $referidosAgg = DB::table('referidos')
+                ->where('eleccion_id', $eleccionId)
+                ->whereNotNull('mesa_num')
+                ->whereIn('estado', ['asignado', 'validado', 'postulado', 'acreditado'])
+                ->select('eleccion_puesto_id', 'mesa_num')
+                ->selectRaw("COALESCE(MAX(CASE WHEN estado = 'acreditado' THEN id END), MAX(CASE WHEN estado = 'postulado' THEN id END), MAX(CASE WHEN estado = 'validado' THEN id END), MAX(CASE WHEN estado = 'asignado' THEN id END)) as best_referido_id")
+                ->groupBy('eleccion_puesto_id', 'mesa_num');
+
+            $coordinadoresAgg = DB::table('abogado_coordinaciones as ac')
+                ->where('ac.eleccion_id', $eleccionId)
+                ->whereNull('ac.released_at')
+                ->whereNotNull('ac.eleccion_mesa_id')
+                ->whereIn('ac.validacion_estado', ['asignado', 'validado'])
+                ->select('ac.eleccion_mesa_id')
+                ->selectRaw('MAX(ac.id) as best_coordinacion_id')
+                ->groupBy('ac.eleccion_mesa_id');
+
+            $rows = DB::table('eleccion_mesas as em')
+                ->join('eleccion_puestos as ep', 'ep.id', '=', 'em.eleccion_puesto_id')
+                ->leftJoinSub($referidosAgg, 'ra', function ($join) {
+                    $join->on('ra.eleccion_puesto_id', '=', 'em.eleccion_puesto_id')
+                        ->on('ra.mesa_num', '=', 'em.mesa_num');
+                })
+                ->leftJoin('referidos as r', 'r.id', '=', 'ra.best_referido_id')
+                ->leftJoin('personas as p', 'p.id', '=', 'r.persona_id')
+                ->leftJoinSub($coordinadoresAgg, 'ca', function ($join) {
+                    $join->on('ca.eleccion_mesa_id', '=', 'em.id');
+                })
+                ->leftJoin('abogado_coordinaciones as ac', 'ac.id', '=', 'ca.best_coordinacion_id')
+                ->leftJoin('abogados as a', 'a.id', '=', 'ac.abogado_id')
+                ->where('em.eleccion_id', $eleccionId)
+                ->where(function ($q) {
+                    $q->whereNotNull('r.id')
+                        ->orWhereNotNull('ac.id');
+                })
+                ->orderBy('ep.dd')
+                ->orderBy('ep.mm')
+                ->orderBy('ep.zz')
+                ->orderBy('ep.pp')
+                ->orderBy('em.mesa_num')
+                ->get([
+                    'ep.dd',
+                    'ep.departamento',
+                    'ep.mm',
+                    'ep.municipio',
+                    'ep.zz',
+                    'ep.pp',
+                    'ep.puesto',
+                    'em.mesa_num',
+                    DB::raw('COALESCE(p.cedula, a.cc) as cedula'),
+                    DB::raw('COALESCE(p.nombre, a.nombre) as nombre'),
+                    DB::raw('COALESCE(p.telefono, a.telefono) as telefono'),
+                    DB::raw('COALESCE(p.email, a.correo) as email'),
+                ]);
+        } else {
+            $rows = DB::table('referidos as r')
+                ->join('personas as p', 'p.id', '=', 'r.persona_id')
+                ->join('eleccion_puestos as ep', 'ep.id', '=', 'r.eleccion_puesto_id')
+                ->where('r.estado', $tipo === 'validados' ? 'validado' : 'asignado')
+                ->whereNotNull('r.mesa_num')
+                ->when($eleccionId, function ($q) use ($eleccionId) {
+                    $q->where('r.eleccion_id', $eleccionId);
+                })
+                ->orderBy('ep.dd')
+                ->orderBy('ep.mm')
+                ->orderBy('ep.zz')
+                ->orderBy('ep.pp')
+                ->orderBy('r.mesa_num')
+                ->get([
+                    'ep.dd',
+                    'ep.departamento',
+                    'ep.mm',
+                    'ep.municipio',
+                    'ep.zz',
+                    'ep.pp',
+                    'ep.puesto',
+                    'r.mesa_num',
+                    'p.cedula',
+                    'p.nombre',
+                    'p.telefono',
+                    'p.email',
+                ]);
+        }
 
         $payload = [];
         foreach ($rows as $r) {
