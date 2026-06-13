@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Traits\EleccionScope;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class ReferidosController extends Controller
@@ -510,12 +511,12 @@ class ReferidosController extends Controller
         foreach ($rows as $r) {
             [$n1, $n2, $a1, $a2] = $this->splitNombreMeta((string) $r->nombre);
             $payload[] = [
-                'Cod Depto' => $this->toIntOrValue($r->dd),
+                'Cod Depto' => $this->metaCode($r->dd, 2),
                 'Nom Departamento' => $this->normalizeMetaText((string) ($r->departamento ?? '')),
-                'Cod Mpio' => $this->toIntOrValue($r->mm),
+                'Cod Mpio' => $this->metaCode($r->mm, 3),
                 'Nom Municipio' => $this->normalizeMetaText((string) ($r->municipio ?? '')),
-                'Cod Zona' => $this->toIntOrValue($r->zz),
-                'Cod Puesto' => str_pad((string) $r->pp, 2, '0', STR_PAD_LEFT),
+                'Cod Zona' => $this->metaCode($r->zz),
+                'Cod Puesto' => $this->metaCode($r->pp, 2),
                 'Nombre Puesto' => $this->normalizeMetaText((string) ($r->puesto ?? '')),
                 'Mesa' => (int) $r->mesa_num,
                 'Cedula' => (string) ($r->cedula ?? ''),
@@ -556,6 +557,10 @@ class ReferidosController extends Controller
         $sheet->fromArray($headings, null, 'A1');
         if (!empty($payload)) {
             $sheet->fromArray($payload, null, 'A2');
+        }
+
+        foreach (['A', 'C', 'E', 'F', 'I', 'N'] as $column) {
+            $sheet->getStyle($column)->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
         }
 
         return response()->streamDownload(function () use ($spreadsheet) {
@@ -694,15 +699,18 @@ class ReferidosController extends Controller
         ];
     }
 
-    private function toIntOrValue($value)
+    private function metaCode($value, ?int $length = null): string
     {
-        if ($value === null || $value === '') {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '') {
             return '';
         }
-        if (is_numeric($value)) {
-            return (int) $value;
+
+        if ($length !== null) {
+            return str_pad($value, $length, '0', STR_PAD_LEFT);
         }
-        return (string) $value;
+
+        return $value;
     }
 
     private function normalizeMetaText(string $value): string
