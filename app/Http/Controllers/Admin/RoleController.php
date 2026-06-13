@@ -17,7 +17,7 @@ class RoleController extends Controller
 
     public function create()
     {
-        return view('roles.create');
+        return view('admin.roles.create');
     }
 
     public function store(Request $request)
@@ -28,10 +28,10 @@ class RoleController extends Controller
 
         Role::create([
             'name' => $request->name,
-            'guard_name' => 'web', // Asegúrate de usar el guard correcto
+            'guard_name' => 'web',
         ]);
 
-        return redirect()->route('roles.index')->with('success', 'Rol creado con éxito');
+        return redirect()->route('admin.roles.index')->with('info', 'Rol creado con éxito');
     }
 
     public function edit(Role $role)
