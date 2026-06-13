@@ -148,11 +148,17 @@ class TerritorioTokensController extends Controller
                 return $r->eleccion_id . '|' . $r->dd . '|' . $r->mm;
             });
 
-        $tokens = $tokens->map(function ($t) use ($municipiosMap, $eleccionesMap) {
-            $key = $t->eleccion_id . '|' . $t->dd . '|' . $t->mm;
-            $geo = $municipiosMap->get($key);
-            $t->departamento_nombre = $geo->departamento ?? null;
-            $t->municipio_nombre = $geo->municipio ?? null;
+        $tokens = $tokens->map(function ($t) use ($municipiosMap, $eleccionesMap, $referidosPorToken, $referidosPorMunicipio) {
+            $geoCodes = $this->normalizeMunicipioCodes($t->municipios, $t->dd, $t->mm);
+            $geoRows = collect($geoCodes)->map(function ($geoCode) use ($municipiosMap, $t) {
+                [$dd, $mm] = explode('-', $geoCode);
+                return $municipiosMap->get($t->eleccion_id . '|' . $dd . '|' . $mm);
+            })->filter();
+
+            $firstGeo = $geoRows->first();
+            $t->departamento_nombre = $firstGeo->departamento ?? null;
+            $t->municipio_nombre = $firstGeo->municipio ?? null;
+            $t->municipios_label = $this->formatMunicipiosLabel($geoRows);
             $t->eleccion_nombre = optional($eleccionesMap->get($t->eleccion_id))->nombre;
             $metaPct = (int) (optional($eleccionesMap->get($t->eleccion_id))->meta_testigos_pct ?? 100);
             $metaPct = max(0, min(100, $metaPct));
@@ -160,9 +166,8 @@ class TerritorioTokensController extends Controller
 
             $mesasQuery = DB::table('eleccion_mesas as em')
                 ->join('eleccion_puestos as ep', 'ep.id', '=', 'em.eleccion_puesto_id')
-                ->where('em.eleccion_id', $t->eleccion_id)
-                ->where('ep.dd', $t->dd)
-                ->where('ep.mm', $t->mm);
+                ->where('em.eleccion_id', $t->eleccion_id);
+            $this->applyGeoCodesScope($mesasQuery, $geoCodes, 'ep.dd', 'ep.mm');
             $comunasToken = $this->parseComunasToken($t->comuna);
             if (!empty($comunasToken)) {
                 $mesasQuery->whereIn('ep.comuna', $comunasToken);
@@ -171,11 +176,11 @@ class TerritorioTokensController extends Controller
 
             $puestos = DB::table('eleccion_puestos as ep')
                 ->where('ep.eleccion_id', $t->eleccion_id)
-                ->where('ep.dd', $t->dd)
-                ->where('ep.mm', $t->mm)
                 ->when(!empty($comunasToken), function ($q) use ($comunasToken) {
                     $q->whereIn('ep.comuna', $comunasToken);
-                })
+                });
+            $this->applyGeoCodesScope($puestos, $geoCodes, 'ep.dd', 'ep.mm');
+            $puestos = $puestos
                 ->pluck('ep.id');
 
             $metaObjetivo = 0;
@@ -201,9 +206,10 @@ class TerritorioTokensController extends Controller
             }
             $t->meta_pactada = $metaPactada;
 
-            $refMunicipioKey = $t->eleccion_id . '|' . $t->dd . '|' . $t->mm;
             $t->referidos_token_total = (int) ($referidosPorToken[$t->id] ?? 0);
-            $t->referidos_municipio_total = (int) (($referidosPorMunicipio[$refMunicipioKey]->total ?? 0));
+            $t->referidos_municipio_total = (int) collect($geoCodes)->sum(function ($geoCode) use ($referidosPorMunicipio, $t) {
+                return (int) (($referidosPorMunicipio[$t->eleccion_id . '|' . str_replace('-', '|', $geoCode)]->total ?? 0));
+            });
             $t->referidos_token_municipio = $t->referidos_token_total . '/' . $t->referidos_municipio_total;
 
             $t->ocupados_total = (int) Referido::query()
@@ -326,20 +332,23 @@ class TerritorioTokensController extends Controller
         ]);
 
         $mode = $data['token_mode'] ?? 'referidos';
-        $municipiosMulti = collect($data['municipios_multi'] ?? [])->filter()->values();
-
-        if ($mode === 'consulta') {
-            if ($municipiosMulti->isEmpty()) {
-                return back()->withErrors(['municipios_multi' => 'Debes seleccionar al menos un municipio para token de consulta.'])->withInput();
-            }
-            $first = (string) $municipiosMulti->first();
-            [$dd, $mm] = explode('-', $first);
-        } else {
-            if (empty($data['municipio_codigo'])) {
-                return back()->withErrors(['municipio_codigo' => 'Debes seleccionar municipio.'])->withInput();
-            }
-            [$dd, $mm] = explode('-', $data['municipio_codigo']);
+        $municipiosSeleccionados = collect();
+        if (!empty($data['municipio_codigo'])) {
+            $municipiosSeleccionados->push((string) $data['municipio_codigo']);
         }
+        $municipiosSeleccionados = $municipiosSeleccionados
+            ->merge($data['municipios_multi'] ?? [])
+            ->map(fn ($value) => trim((string) $value))
+            ->filter(fn ($value) => $value !== '' && strpos($value, '-') !== false)
+            ->unique()
+            ->values();
+
+        if ($municipiosSeleccionados->isEmpty()) {
+            return back()->withErrors(['municipio_codigo' => 'Debes seleccionar al menos un municipio.'])->withInput();
+        }
+
+        $first = (string) $municipiosSeleccionados->first();
+        [$dd, $mm] = explode('-', $first);
 
         $token = Str::random(32);
 
@@ -347,9 +356,11 @@ class TerritorioTokensController extends Controller
             'eleccion_id' => $data['eleccion_id'],
             'dd' => $dd,
             'mm' => $mm,
-            'comuna' => $this->normalizeComunasInput($data['comuna'] ?? null),
+            'comuna' => ($mode === 'consulta' || $municipiosSeleccionados->count() > 1)
+                ? null
+                : $this->normalizeComunasInput($data['comuna'] ?? null),
             'es_consulta' => $mode === 'consulta',
-            'municipios' => $mode === 'consulta' ? $municipiosMulti->all() : null,
+            'municipios' => $municipiosSeleccionados->all(),
             'token' => $token,
             'responsable' => $data['responsable'] ?? null,
             'activo' => true,
@@ -421,20 +432,27 @@ class TerritorioTokensController extends Controller
             'municipios_multi.*' => 'string',
         ]);
 
-        if ($token->es_consulta) {
-            $municipios = collect($data['municipios_multi'] ?? [])->filter()->values();
-            if ($municipios->isEmpty()) {
-                return back()->withErrors(['municipios_multi' => 'Debes seleccionar al menos un municipio para token de consulta.'])->withInput();
-            }
-            $first = (string) $municipios->first();
-            if (strpos($first, '-') === false) {
-                return back()->withErrors(['municipios_multi' => 'Formato inválido de municipio.'])->withInput();
-            }
-            [$dd, $mm] = explode('-', $first);
-            $token->dd = $dd;
-            $token->mm = $mm;
-            $token->municipios = $municipios->all();
-            // En consulta multi-municipio no usamos comuna de filtro.
+        $municipios = collect($data['municipios_multi'] ?? [])
+            ->map(fn ($value) => trim((string) $value))
+            ->filter(fn ($value) => $value !== '' && strpos($value, '-') !== false)
+            ->unique()
+            ->values();
+
+        if ($municipios->isEmpty()) {
+            $municipios = collect($this->normalizeMunicipioCodes($token->municipios, $token->dd, $token->mm));
+        }
+
+        $first = (string) $municipios->first();
+        if ($first === '' || strpos($first, '-') === false) {
+            return back()->withErrors(['municipios_multi' => 'Debes dejar al menos un municipio válido.'])->withInput();
+        }
+
+        [$dd, $mm] = explode('-', $first);
+        $token->dd = $dd;
+        $token->mm = $mm;
+        $token->municipios = $municipios->all();
+
+        if ($token->es_consulta || $municipios->count() > 1) {
             $token->comuna = null;
         } else {
             $token->comuna = $this->normalizeComunasInput($data['comuna'] ?? null);
@@ -470,5 +488,55 @@ class TerritorioTokensController extends Controller
             ->unique()
             ->values()
             ->all();
+    }
+
+    private function normalizeMunicipioCodes($municipios, ?string $dd, ?string $mm): array
+    {
+        $items = collect(is_array($municipios) ? $municipios : [])
+            ->map(fn ($value) => trim((string) $value))
+            ->filter(fn ($value) => $value !== '' && strpos($value, '-') !== false)
+            ->unique()
+            ->values();
+
+        if ($items->isEmpty() && $dd && $mm) {
+            $items = collect([trim((string) $dd) . '-' . trim((string) $mm)]);
+        }
+
+        return $items->all();
+    }
+
+    private function applyGeoCodesScope($query, array $geoCodes, string $ddColumn = 'dd', string $mmColumn = 'mm'): void
+    {
+        $validGeoCodes = collect($geoCodes)
+            ->filter(fn ($value) => strpos((string) $value, '-') !== false)
+            ->values()
+            ->all();
+
+        $query->where(function ($scope) use ($validGeoCodes, $ddColumn, $mmColumn) {
+            foreach ($validGeoCodes as $geoCode) {
+                [$dd, $mm] = explode('-', (string) $geoCode);
+                $scope->orWhere(function ($geo) use ($ddColumn, $mmColumn, $dd, $mm) {
+                    $geo->where($ddColumn, $dd)->where($mmColumn, $mm);
+                });
+            }
+        });
+    }
+
+    private function formatMunicipiosLabel($geoRows): string
+    {
+        $labels = collect($geoRows)
+            ->map(fn ($row) => trim(($row->departamento ?? '') . ' / ' . ($row->municipio ?? ''), ' /'))
+            ->filter()
+            ->values();
+
+        if ($labels->isEmpty()) {
+            return 'N/D';
+        }
+
+        if ($labels->count() <= 2) {
+            return $labels->implode(' | ');
+        }
+
+        return $labels->take(2)->implode(' | ') . ' +' . ($labels->count() - 2);
     }
 }

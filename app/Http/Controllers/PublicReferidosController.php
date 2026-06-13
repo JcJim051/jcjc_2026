@@ -27,23 +27,22 @@ class PublicReferidosController extends Controller
             return view('public.referidos.cerrado', ['token' => $tokenRow]);
         }
 
-        $departamento = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
-            ->where('dd', $tokenRow->dd)
-            ->select('departamento')
+        $geoCodes = $this->tokenMunicipioCodes($tokenRow);
+        $geoInfo = EleccionPuesto::query()
+            ->where('eleccion_id', $tokenRow->eleccion_id);
+        $this->applyTokenGeoScope($geoInfo, $tokenRow);
+        $geoInfo = $geoInfo
+            ->select('departamento', 'municipio')
             ->distinct()
-            ->first();
+            ->get();
 
-        $municipio = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
-            ->where('dd', $tokenRow->dd)
-            ->where('mm', $tokenRow->mm)
-            ->select('municipio')
-            ->distinct()
-            ->first();
+        $departamento = $geoInfo->pluck('departamento')->filter()->unique()->values();
+        $municipio = $geoInfo->pluck('municipio')->filter()->unique()->values();
 
         return view('public.referidos.form', [
             'token' => $tokenRow,
-            'departamento' => $departamento?->departamento,
-            'municipio' => $municipio?->municipio,
+            'departamento' => $departamento->count() > 1 ? 'Multiples departamentos' : ($departamento->first() ?? null),
+            'municipio' => count($geoCodes) > 1 ? 'Multiples municipios' : ($municipio->first() ?? null),
             'comuna' => $tokenRow->comuna,
         ]);
     }
@@ -101,10 +100,9 @@ class PublicReferidosController extends Controller
         }
 
         $puesto = EleccionPuesto::where('id', $data['puesto_id'])
-            ->where('eleccion_id', $tokenRow->eleccion_id)
-            ->where('dd', $tokenRow->dd)
-            ->where('mm', $tokenRow->mm)
-            ->first();
+            ->where('eleccion_id', $tokenRow->eleccion_id);
+        $this->applyTokenGeoScope($puesto, $tokenRow);
+        $puesto = $puesto->first();
 
         if (!$puesto) {
             return back()->withErrors(['puesto_id' => 'Puesto no permitido para este territorio.']);
@@ -255,33 +253,21 @@ class PublicReferidosController extends Controller
         $municipiosConsulta = collect($tokenRow->municipios ?? [])->filter()->values();
         $comunasToken = $this->parseComunasToken($tokenRow->comuna);
 
+        $geoCodes = $this->tokenMunicipioCodes($tokenRow);
         $municipio = null;
         if (!$tokenRow->es_consulta) {
-            $municipio = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
-                ->where('dd', $tokenRow->dd)
-                ->where('mm', $tokenRow->mm)
-                ->select('municipio')
-                ->distinct()
-                ->first();
+            $municipioQuery = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id);
+            $this->applyTokenGeoScope($municipioQuery, $tokenRow);
+            $municipio = $municipioQuery->select('municipio')->distinct()->first();
         }
 
         $referidos = DB::table('referidos as r')
             ->join('personas as p', 'p.id', '=', 'r.persona_id')
             ->join('eleccion_puestos as ep', 'ep.id', '=', 'r.eleccion_puesto_id')
-            ->where(function ($q) use ($tokenRow, $municipiosConsulta) {
+            ->where(function ($q) use ($tokenRow) {
                 if ($tokenRow->es_consulta) {
-                    $q->where('r.eleccion_id', $tokenRow->eleccion_id)
-                        ->where(function ($geo) use ($municipiosConsulta) {
-                            foreach ($municipiosConsulta as $geoCode) {
-                                if (strpos((string) $geoCode, '-') === false) {
-                                    continue;
-                                }
-                                [$dd, $mm] = explode('-', (string) $geoCode);
-                                $geo->orWhere(function ($g) use ($dd, $mm) {
-                                    $g->where('ep.dd', $dd)->where('ep.mm', $mm);
-                                });
-                            }
-                        });
+                    $q->where('r.eleccion_id', $tokenRow->eleccion_id);
+                    $this->applyTokenGeoScope($q, $tokenRow, 'ep.dd', 'ep.mm');
                 } else {
                     $q->where('r.territorio_token_id', $tokenRow->id);
                 }
@@ -304,20 +290,8 @@ class PublicReferidosController extends Controller
 
         $puestosAlcance = EleccionPuesto::query()
             ->where('eleccion_id', $tokenRow->eleccion_id)
-            ->where(function ($q) use ($tokenRow, $municipiosConsulta) {
-                if ($tokenRow->es_consulta) {
-                    foreach ($municipiosConsulta as $geoCode) {
-                        if (strpos((string) $geoCode, '-') === false) {
-                            continue;
-                        }
-                        [$dd, $mm] = explode('-', (string) $geoCode);
-                        $q->orWhere(function ($g) use ($dd, $mm) {
-                            $g->where('dd', $dd)->where('mm', $mm);
-                        });
-                    }
-                } else {
-                    $q->where('dd', $tokenRow->dd)->where('mm', $tokenRow->mm);
-                }
+            ->where(function ($q) use ($tokenRow) {
+                $this->applyTokenGeoScope($q, $tokenRow);
             })
             ->when(!empty($tokenRow->comuna), function ($q) use ($tokenRow) {
                 $q->whereIn('comuna', $this->parseComunasToken($tokenRow->comuna));
@@ -338,24 +312,13 @@ class PublicReferidosController extends Controller
             ]);
 
         $referidosAggPorPuesto = DB::table('referidos')
-            ->where(function ($q) use ($tokenRow, $municipiosConsulta) {
+            ->where(function ($q) use ($tokenRow) {
                 if ($tokenRow->es_consulta) {
+                    $puestosIds = EleccionPuesto::query()
+                        ->where('eleccion_id', $tokenRow->eleccion_id);
+                    $this->applyTokenGeoScope($puestosIds, $tokenRow);
                     $q->where('eleccion_id', $tokenRow->eleccion_id)
-                        ->whereIn('eleccion_puesto_id', EleccionPuesto::query()
-                            ->where('eleccion_id', $tokenRow->eleccion_id)
-                            ->where(function ($geoQ) use ($municipiosConsulta) {
-                                foreach ($municipiosConsulta as $geoCode) {
-                                    if (strpos((string) $geoCode, '-') === false) {
-                                        continue;
-                                    }
-                                    [$dd, $mm] = explode('-', (string) $geoCode);
-                                    $geoQ->orWhere(function ($g) use ($dd, $mm) {
-                                        $g->where('dd', $dd)->where('mm', $mm);
-                                    });
-                                }
-                            })
-                            ->pluck('id')
-                            ->all());
+                        ->whereIn('eleccion_puesto_id', $puestosIds->pluck('id')->all());
                 } else {
                     $q->where('territorio_token_id', $tokenRow->id);
                 }
@@ -409,7 +372,7 @@ class PublicReferidosController extends Controller
         return view('public.referidos.seguimiento', [
             'token' => $tokenRow,
             'meta_pct' => $metaPct,
-            'municipio' => $tokenRow->es_consulta ? 'Múltiples municipios' : ($municipio?->municipio),
+            'municipio' => count($geoCodes) > 1 ? 'Multiples municipios' : ($municipio?->municipio),
             'referidos' => $referidos,
             'puestos_alcance' => $puestosAlcance,
         ]);
@@ -423,20 +386,8 @@ class PublicReferidosController extends Controller
 
         $puestosAlcance = EleccionPuesto::query()
             ->where('eleccion_id', $tokenRow->eleccion_id)
-            ->where(function ($q) use ($tokenRow, $municipiosConsulta) {
-                if ($tokenRow->es_consulta) {
-                    foreach ($municipiosConsulta as $geoCode) {
-                        if (strpos((string) $geoCode, '-') === false) {
-                            continue;
-                        }
-                        [$dd, $mm] = explode('-', (string) $geoCode);
-                        $q->orWhere(function ($g) use ($dd, $mm) {
-                            $g->where('dd', $dd)->where('mm', $mm);
-                        });
-                    }
-                } else {
-                    $q->where('dd', $tokenRow->dd)->where('mm', $tokenRow->mm);
-                }
+            ->where(function ($q) use ($tokenRow) {
+                $this->applyTokenGeoScope($q, $tokenRow);
             })
             ->when(!empty($tokenRow->comuna), function ($q) use ($tokenRow) {
                 $q->whereIn('comuna', $this->parseComunasToken($tokenRow->comuna));
@@ -453,24 +404,13 @@ class PublicReferidosController extends Controller
             ]);
 
         $referidosAggPorPuesto = DB::table('referidos')
-            ->where(function ($q) use ($tokenRow, $municipiosConsulta) {
+            ->where(function ($q) use ($tokenRow) {
                 if ($tokenRow->es_consulta) {
+                    $puestosIds = EleccionPuesto::query()
+                        ->where('eleccion_id', $tokenRow->eleccion_id);
+                    $this->applyTokenGeoScope($puestosIds, $tokenRow);
                     $q->where('eleccion_id', $tokenRow->eleccion_id)
-                        ->whereIn('eleccion_puesto_id', EleccionPuesto::query()
-                            ->where('eleccion_id', $tokenRow->eleccion_id)
-                            ->where(function ($geoQ) use ($municipiosConsulta) {
-                                foreach ($municipiosConsulta as $geoCode) {
-                                    if (strpos((string) $geoCode, '-') === false) {
-                                        continue;
-                                    }
-                                    [$dd, $mm] = explode('-', (string) $geoCode);
-                                    $geoQ->orWhere(function ($g) use ($dd, $mm) {
-                                        $g->where('dd', $dd)->where('mm', $mm);
-                                    });
-                                }
-                            })
-                            ->pluck('id')
-                            ->all());
+                        ->whereIn('eleccion_puesto_id', $puestosIds->pluck('id')->all());
                 } else {
                     $q->where('territorio_token_id', $tokenRow->id);
                 }
@@ -566,8 +506,9 @@ class PublicReferidosController extends Controller
 
         $puestos = EleccionPuesto::query()
             ->where('eleccion_id', $tokenRow->eleccion_id)
-            ->where('dd', $tokenRow->dd)
-            ->where('mm', $tokenRow->mm)
+            ->where(function ($q) use ($tokenRow) {
+                $this->applyTokenGeoScope($q, $tokenRow);
+            })
             ->when(!empty($comunasToken = $this->parseComunasToken($tokenRow->comuna)), function ($q) use ($comunasToken) {
                 $q->whereIn('comuna', $comunasToken);
             })
@@ -640,8 +581,9 @@ class PublicReferidosController extends Controller
 
         $puesto = EleccionPuesto::where('id', $data['puesto_id'])
             ->where('eleccion_id', $referido->eleccion_id)
-            ->where('dd', $tokenRow->dd)
-            ->where('mm', $tokenRow->mm)
+            ->where(function ($q) use ($tokenRow) {
+                $this->applyTokenGeoScope($q, $tokenRow);
+            })
             ->when(!empty($comunasToken = $this->parseComunasToken($tokenRow->comuna)), function ($q) use ($comunasToken) {
                 $q->whereIn('comuna', $comunasToken);
             })
@@ -759,8 +701,9 @@ class PublicReferidosController extends Controller
         $puesto = EleccionPuesto::query()
             ->where('id', $data['puesto_id'])
             ->where('eleccion_id', $tokenRow->eleccion_id)
-            ->where('dd', $tokenRow->dd)
-            ->where('mm', $tokenRow->mm)
+            ->where(function ($q) use ($tokenRow) {
+                $this->applyTokenGeoScope($q, $tokenRow);
+            })
             ->when(!empty($comunasToken = $this->parseComunasToken($tokenRow->comuna)), function ($q) use ($comunasToken) {
                 $q->whereIn('comuna', $comunasToken);
             })
@@ -806,7 +749,9 @@ class PublicReferidosController extends Controller
         $search = trim((string) $request->get('q', ''));
 
         $query = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
-            ->where('dd', $tokenRow->dd)
+            ->where(function ($q) use ($tokenRow) {
+                $this->applyTokenGeoScope($q, $tokenRow);
+            })
             ->select('dd', 'departamento')
             ->distinct();
 
@@ -836,8 +781,9 @@ class PublicReferidosController extends Controller
         $search = trim((string) $request->get('q', ''));
 
         $query = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
-            ->where('dd', $tokenRow->dd)
-            ->where('mm', $tokenRow->mm)
+            ->where(function ($q) use ($tokenRow) {
+                $this->applyTokenGeoScope($q, $tokenRow);
+            })
             ->select('mm', 'municipio')
             ->distinct();
 
@@ -865,9 +811,8 @@ class PublicReferidosController extends Controller
             return response()->json(['results' => []]);
         }
 
-        $query = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id)
-            ->where('dd', $tokenRow->dd)
-            ->where('mm', $tokenRow->mm);
+        $query = EleccionPuesto::where('eleccion_id', $tokenRow->eleccion_id);
+        $this->applyTokenGeoScope($query, $tokenRow);
 
         $comunasToken = $this->parseComunasToken($tokenRow->comuna);
         if (!empty($comunasToken)) {
@@ -1083,5 +1028,37 @@ class PublicReferidosController extends Controller
             ->unique()
             ->values()
             ->all();
+    }
+
+    private function tokenMunicipioCodes(TerritorioToken $tokenRow): array
+    {
+        $items = collect(is_array($tokenRow->municipios) ? $tokenRow->municipios : [])
+            ->map(fn ($value) => trim((string) $value))
+            ->filter(fn ($value) => $value !== '' && strpos($value, '-') !== false)
+            ->unique()
+            ->values();
+
+        if ($items->isEmpty() && $tokenRow->dd && $tokenRow->mm) {
+            $items = collect([$tokenRow->dd . '-' . $tokenRow->mm]);
+        }
+
+        return $items->all();
+    }
+
+    private function applyTokenGeoScope($query, TerritorioToken $tokenRow, string $ddColumn = 'dd', string $mmColumn = 'mm', bool $useMunicipios = true): void
+    {
+        $geoCodes = $useMunicipios ? $this->tokenMunicipioCodes($tokenRow) : [$tokenRow->dd . '-' . $tokenRow->mm];
+
+        $query->where(function ($scope) use ($geoCodes, $ddColumn, $mmColumn) {
+            foreach ($geoCodes as $geoCode) {
+                if (strpos((string) $geoCode, '-') === false) {
+                    continue;
+                }
+                [$dd, $mm] = explode('-', (string) $geoCode);
+                $scope->orWhere(function ($geo) use ($ddColumn, $mmColumn, $dd, $mm) {
+                    $geo->where($ddColumn, $dd)->where($mmColumn, $mm);
+                });
+            }
+        });
     }
 }

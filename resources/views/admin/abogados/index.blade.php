@@ -222,6 +222,43 @@
             </form>
         </div>
     </div>
+
+    <div class="card collapsed-card">
+        <div class="card-header bg-secondary">
+            <h3 class="card-title"><strong>Ajuste transitorio de coordinadores</strong></h3>
+            <div class="card-tools">
+                <button type="button" class="btn btn-tool text-white" data-card-widget="collapse">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+        </div>
+        <div class="card-body" style="display: none;">
+            <form method="POST" action="{{ route('admin.abogados.reubicar_coordinadores.preview') }}">
+                @csrf
+                <div class="row align-items-end">
+                    <div class="col-md-8 form-group">
+                        <label>Elección a ajustar</label>
+                        <select name="eleccion_id" class="form-control" required>
+                            <option value="">Seleccione...</option>
+                            @foreach(($eleccionesReubicacion ?? collect()) as $e)
+                                <option value="{{ $e->id }}" {{ (string) old('eleccion_id', $eleccionActiva ?? '') === (string) $e->id ? 'selected' : '' }}>
+                                    #{{ $e->id }} - {{ $e->nombre }} {{ $e->tipo ? '(' . $e->tipo . ')' : '' }} [{{ $e->estado }}]
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-4 form-group">
+                        <button type="submit" class="btn btn-secondary btn-block">
+                            <i class="fas fa-random mr-1"></i> Previsualizar ajuste
+                        </button>
+                    </div>
+                </div>
+                <div class="alert alert-light border mb-0">
+                    Reubica coordinadores activos desde <strong>Rem</strong> hacia las últimas mesas libres de cada puesto, sin mover referidos existentes.
+                </div>
+            </form>
+        </div>
+    </div>
 @stop
 
 @section('css')

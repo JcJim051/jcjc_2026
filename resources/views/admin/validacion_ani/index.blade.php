@@ -16,14 +16,16 @@
 
     <div class="card">
         <div class="card-body">
-            <div class="mb-3 text-right">
-                <form action="{{ route('admin.validacion_ani.validar_masivo') }}" method="POST" style="display:inline;">
-                    @csrf
-                    <button type="submit" class="btn btn-success" onclick="return confirm('¿Validar masivamente todos los pendientes por validar en ANI?')">
-                        Validar masivo
-                    </button>
-                </form>
-            </div>
+            @if ((auth()->id() === 1) || ((int) optional(auth()->user())->role === 1))
+                <div class="mb-3 text-right">
+                    <form action="{{ route('admin.validacion_ani.validar_masivo') }}" method="POST" style="display:inline;">
+                        @csrf
+                        <button type="submit" class="btn btn-success" onclick="return confirm('¿Validar masivamente todos los pendientes por validar en ANI?')">
+                            Validar masivo
+                        </button>
+                    </form>
+                </div>
+            @endif
             <table id="example"
                 class="table display nowrap table-bordered"
                 style="width:100%; font-size:10px">

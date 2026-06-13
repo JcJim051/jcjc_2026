@@ -24,7 +24,7 @@
             <form action="{{ route('admin.territorio_tokens.store') }}" method="POST">
                 @csrf
                 <div class="row">
-                    <div class="col-sm-3">
+                    <div class="col-sm-4">
                         <div class="form-group">
                             <label>Tipo de token</label>
                             <select name="token_mode" id="token_mode" class="form-control" required>
@@ -33,8 +33,6 @@
                             </select>
                         </div>
                     </div>
-                </div>
-                <div class="row">
                     <div class="col-sm-4">
                         <div class="form-group">
                             <label>Eleccion</label>
@@ -50,25 +48,29 @@
                             </select>
                         </div>
                     </div>
-                    <div class="col-sm-4">
+                </div>
+                <div class="row">
+                    <div class="col-sm-6">
                         <div class="form-group">
                             <label>Municipio</label>
                             <select name="municipio_codigo" id="municipio_codigo" class="form-control" required></select>
                         </div>
                     </div>
-                    <div class="col-sm-4" id="consulta_municipios_wrap" style="display:none;">
+                    <div class="col-sm-6">
                         <div class="form-group">
-                            <label>Municipios (consulta)</label>
+                            <label>Comunas (opcional)</label>
+                            <select name="comuna[]" id="comuna" class="form-control" multiple></select>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-sm-6" id="consulta_municipios_wrap">
+                        <div class="form-group">
+                            <label>Municipios adicionales</label>
                             <select name="municipios_multi[]" id="municipios_multi" class="form-control" multiple></select>
                             <small class="text-muted d-block mt-1">Seleccionados:</small>
                             <div id="municipios_multi_preview" class="municipios-preview text-muted">Sin selección</div>
                             <button type="button" class="btn btn-xs btn-outline-primary mt-2" id="btn_select_all_municipios">Seleccionar todos</button>
-                        </div>
-                    </div>
-                    <div class="col-sm-4">
-                        <div class="form-group">
-                            <label>Comunas (opcional)</label>
-                            <select name="comuna[]" id="comuna" class="form-control" multiple></select>
                         </div>
                     </div>
                 </div>
@@ -143,7 +145,7 @@
                             <td>{{ $t->es_consulta ? 'Consulta' : 'Referidos' }}</td>
                             <td>{{ $t->responsable ?: 'N/D' }}</td>
                             <td>
-                                {{ $t->departamento_nombre && $t->municipio_nombre ? ($t->departamento_nombre . ' / ' . $t->municipio_nombre) : 'N/D' }}
+                                {{ $t->municipios_label ?? ($t->departamento_nombre && $t->municipio_nombre ? ($t->departamento_nombre . ' / ' . $t->municipio_nombre) : 'N/D') }}
                             </td>
                             <td>{{ $t->comuna }}</td>
                             <td><span class="badge badge-info">{{ $t->mesas_total ?? 0 }}</span></td>
@@ -184,7 +186,7 @@
                                         data-activo="{{ $t->activo ? 1 : 0 }}"
                                         data-es-consulta="{{ $t->es_consulta ? 1 : 0 }}"
                                         data-eleccion-id="{{ $t->eleccion_id }}"
-                                        data-municipios='@json($t->municipios ?? [])'
+                                        data-municipios='@json(!empty($t->municipios) ? $t->municipios : [$t->dd . "-" . $t->mm])'
                                         data-toggle="modal"
                                         data-target="#editTokenModal">
                                         Editar
@@ -243,7 +245,7 @@
                             <input type="text" name="comuna" id="edit_comuna" class="form-control" placeholder="Ej: 01COMUNA 1,02COMUNA 2">
                         </div>
                         <div class="form-group" id="edit_municipios_wrap" style="display:none;">
-                            <label>Municipios (solo consulta)</label>
+                            <label>Municipios del token</label>
                             <select name="municipios_multi[]" id="edit_municipios_multi" class="form-control" multiple></select>
                             <small class="text-muted d-block mt-1">Seleccionados:</small>
                             <div id="edit_municipios_preview" class="municipios-preview text-muted">Sin selección</div>
@@ -445,8 +447,8 @@ $(function(){
 
     $('#token_mode').on('change', function(){
         var isConsulta = $(this).val() === 'consulta';
-        $('#consulta_municipios_wrap').toggle(isConsulta);
-        $('#municipio_codigo').prop('required', !isConsulta).closest('.form-group').parent().toggle(!isConsulta);
+        $('#consulta_municipios_wrap').show();
+        $('#municipio_codigo').prop('required', false).closest('.form-group').parent().show();
         $('#comuna').prop('disabled', isConsulta);
     }).trigger('change');
 
@@ -522,16 +524,14 @@ $(function(){
         $modal.data('eleccion-id', eleccionId);
         $('#edit_comuna_wrap').toggle(!esConsulta);
         $('#edit_comuna').prop('disabled', esConsulta);
-        $('#edit_municipios_wrap').toggle(esConsulta);
+        $('#edit_municipios_wrap').show();
 
         $municipios.empty().trigger('change');
-        if (esConsulta) {
-            municipios.forEach(function (geo) {
-                var option = new Option(geo, geo, true, true);
-                $municipios.append(option);
-            });
-            $municipios.trigger('change');
-        }
+        municipios.forEach(function (geo) {
+            var option = new Option(geo, geo, true, true);
+            $municipios.append(option);
+        });
+        $municipios.trigger('change');
         compactMultiSelect($municipios);
     });
 

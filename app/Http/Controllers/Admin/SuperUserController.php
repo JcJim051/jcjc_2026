@@ -195,7 +195,27 @@ class SuperUserController extends Controller
             ->paginate($perPage)
             ->appends(request()->except('page'));
 
-        $mesasRows = collect($mesasPage->items())->map(function ($row) {
+        $coordinacionesActivas = AbogadoCoordinacion::query()
+            ->from('abogado_coordinaciones as ac')
+            ->join('abogados as a', 'a.id', '=', 'ac.abogado_id')
+            ->where('ac.eleccion_id', $eleccionId)
+            ->whereNull('ac.released_at')
+            ->orderBy('ac.assigned_at')
+            ->get([
+                'ac.id as coordinacion_id',
+                'ac.abogado_id',
+                'ac.codpuesto',
+                'ac.eleccion_mesa_id',
+                'ac.validacion_estado',
+                'a.nombre as abogado_nombre',
+                'a.telefono as abogado_telefono',
+            ]);
+
+        $coordinacionesPorMesa = $coordinacionesActivas
+            ->filter(fn ($coord) => !empty($coord->eleccion_mesa_id))
+            ->keyBy('eleccion_mesa_id');
+
+        $mesasRows = collect($mesasPage->items())->map(function ($row) use ($coordinacionesPorMesa) {
             $estado = 'pendiente';
             if ($row->has_acreditado) {
                 $estado = 'acreditado';
@@ -209,15 +229,24 @@ class SuperUserController extends Controller
                 $estado = 'referido';
             }
 
+            $coordinacion = null;
+            if (!$row->referido_id && $coordinacionesPorMesa->has($row->mesa_id)) {
+                $coordinacion = $coordinacionesPorMesa->get($row->mesa_id);
+                $estado = (string) ($coordinacion->validacion_estado ?: 'asignado');
+            }
+
             return (object) [
                 'mesa_id' => $row->mesa_id,
                 'mesa_label' => (string) $row->mesa_num,
                 'mesa_sort' => (int) $row->mesa_num,
                 'is_remanente' => false,
+                'is_coordinador' => (bool) $coordinacion,
                 'estado' => $estado,
                 'referido_id' => $row->referido_id,
-                'nombre' => $row->nombre,
-                'telefono' => $row->telefono,
+                'nombre' => $coordinacion->abogado_nombre ?? $row->nombre,
+                'telefono' => $coordinacion->abogado_telefono ?? $row->telefono,
+                'abogado_id' => $coordinacion->abogado_id ?? null,
+                'coordinacion_id' => $coordinacion->coordinacion_id ?? null,
                 'municipio' => $row->municipio,
                 'puesto' => $row->puesto,
                 'dd' => $row->dd,
@@ -229,19 +258,8 @@ class SuperUserController extends Controller
         });
 
         $remanentesRows = collect();
-        $coordinacionesActivas = AbogadoCoordinacion::query()
-            ->from('abogado_coordinaciones as ac')
-            ->join('abogados as a', 'a.id', '=', 'ac.abogado_id')
-            ->where('ac.eleccion_id', $eleccionId)
-            ->whereNull('ac.released_at')
-            ->orderBy('ac.assigned_at')
-            ->get([
-                'ac.id as coordinacion_id',
-                'ac.abogado_id',
-                'ac.codpuesto',
-                'a.nombre as abogado_nombre',
-                'a.telefono as abogado_telefono',
-            ])
+        $coordinacionesSinMesa = $coordinacionesActivas
+            ->filter(fn ($coord) => empty($coord->eleccion_mesa_id))
             ->groupBy('codpuesto');
 
         $puestosPermitidos = $mesasRows
@@ -281,8 +299,8 @@ class SuperUserController extends Controller
                 (string) ($puesto->pp ?? ''),
             ]);
             foreach ($keys as $k) {
-                if ($coordinacionesActivas->has($k)) {
-                    $coordList = $coordinacionesActivas->get($k);
+                if ($coordinacionesSinMesa->has($k)) {
+                    $coordList = $coordinacionesSinMesa->get($k);
                     break;
                 }
             }

@@ -47,6 +47,8 @@ class ValidacionAniController extends Controller
         $coordinadores = AbogadoCoordinacion::query()
             ->from('abogado_coordinaciones as ac')
             ->join('abogados as a', 'a.id', '=', 'ac.abogado_id')
+            ->leftJoin('eleccion_mesas as em', 'em.id', '=', 'ac.eleccion_mesa_id')
+            ->leftJoin('eleccion_puestos as ep', 'ep.id', '=', 'em.eleccion_puesto_id')
             ->leftJoin('puestos as pu', 'pu.codpuesto', '=', 'ac.codpuesto')
             ->where('ac.eleccion_id', $eleccionId)
             ->whereNull('ac.released_at')
@@ -58,9 +60,9 @@ class ValidacionAniController extends Controller
                 'a.cc as cedula',
                 'a.nombre',
                 'a.correo as email',
-                DB::raw('COALESCE(pu.mun, "") as municipio'),
-                DB::raw('COALESCE(pu.nombre, ac.codpuesto) as puesto'),
-                DB::raw("'Rem' as mesa_num"),
+                DB::raw('COALESCE(ep.municipio, pu.mun, "") as municipio'),
+                DB::raw('COALESCE(ep.puesto, pu.nombre, ac.codpuesto) as puesto'),
+                DB::raw("COALESCE(CAST(em.mesa_num as CHAR), 'Rem') as mesa_num"),
                 DB::raw("'coordinador' as tipo_fila"),
                 'a.id as abogado_id',
             ])
@@ -79,7 +81,17 @@ class ValidacionAniController extends Controller
     public function editCoordinador(AbogadoCoordinacion $coordinacion)
     {
         $abogado = \App\Models\Abogado::findOrFail($coordinacion->abogado_id);
-        $puesto = \App\Models\Puestos::where('codpuesto', $coordinacion->codpuesto)->first();
+        $puesto = DB::table('abogado_coordinaciones as ac')
+            ->leftJoin('eleccion_mesas as em', 'em.id', '=', 'ac.eleccion_mesa_id')
+            ->leftJoin('eleccion_puestos as ep', 'ep.id', '=', 'em.eleccion_puesto_id')
+            ->leftJoin('puestos as pu', 'pu.codpuesto', '=', 'ac.codpuesto')
+            ->where('ac.id', $coordinacion->id)
+            ->select([
+                DB::raw('COALESCE(ep.municipio, pu.mun, "") as municipio'),
+                DB::raw('COALESCE(ep.puesto, pu.nombre, ac.codpuesto) as nombre'),
+                'em.mesa_num',
+            ])
+            ->first();
         if ($abogado->pdf_cc && str_starts_with($abogado->pdf_cc, 'abogados/cc/')) {
             $filename = basename($abogado->pdf_cc);
             $target = 'cedulas/' . $filename;
@@ -213,6 +225,11 @@ class ValidacionAniController extends Controller
 
     public function validarMasivo()
     {
+        $user = auth()->user();
+        if (!$user || ((int) $user->id !== 1 && (int) $user->role !== 1)) {
+            abort(403);
+        }
+
         $eleccionId = $this->resolveEleccionId((int) request('eleccion_id'));
 
         $referidos = Referido::query()

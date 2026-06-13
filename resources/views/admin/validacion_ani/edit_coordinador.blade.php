@@ -3,7 +3,7 @@
 @section('title', 'Validacion ANI')
 
 @section('content_header')
-    <h1>Validacion ANI - Coordinador Rem {{ $puesto->nombre ?? $coordinacion->codpuesto }}</h1>
+    <h1>Validacion ANI - Coordinador {{ ($puesto->mesa_num ?? null) ? 'Mesa ' . $puesto->mesa_num : 'Rem' }} {{ $puesto->nombre ?? $coordinacion->codpuesto }}</h1>
     <style>
         #pdf-viewer { width: 100%; height: 600px; }
     </style>
@@ -75,11 +75,11 @@
                             <div class="row">
                                 <div class="col-md-9">
                                     <label>Puesto de votación</label>
-                                    <input type="text" class="form-control" value="{{ ($puesto->mun ?? '') . ' - ' . ($puesto->nombre ?? $coordinacion->codpuesto) }}" readonly>
+                                    <input type="text" class="form-control" value="{{ trim(($puesto->municipio ?? '') . ' - ' . ($puesto->nombre ?? $coordinacion->codpuesto), ' -') }}" readonly>
                                 </div>
                                 <div class="col-md-3">
                                     <label>Mesa</label>
-                                    <input type="text" class="form-control" value="Rem" readonly>
+                                    <input type="text" class="form-control" value="{{ ($puesto->mesa_num ?? null) ? 'Mesa ' . $puesto->mesa_num : 'Rem' }}" readonly>
                                 </div>
                             </div>
                             <div class="row mt-3">

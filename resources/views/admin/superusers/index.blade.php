@@ -109,6 +109,10 @@
                                     @else
                                         <span class="text-muted">-</span>
                                     @endif
+                                @elseif (!empty($r->is_coordinador))
+                                    <a href="{{ route('admin.abogados.show', $r->abogado_id) }}" class="btn btn-info btn-sm">
+                                        Ver coordinador
+                                    </a>
                                 @elseif (!$r->referido_id)
                                     <span class="text-muted">-</span>
                                 @elseif ($r->estado === 'acreditado')

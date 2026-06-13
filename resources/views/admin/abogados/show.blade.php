@@ -172,6 +172,7 @@
                         <th>Fecha asignación</th>
                         <th>Elección</th>
                         <th>Puesto</th>
+                        <th>Mesa</th>
                         <th>Comuna oficial</th>
                         <th>Dirección oficial</th>
                         <th>Estado</th>
@@ -184,6 +185,7 @@
                             <td>{{ $h->assigned_at ? \Carbon\Carbon::parse($h->assigned_at)->format('Y-m-d H:i') : '-' }}</td>
                             <td>{{ $h->eleccion_nombre ?? ('Elección #' . $h->eleccion_id) }}</td>
                             <td>{{ trim(($h->puesto_municipio ?? '') . ' - ' . ($h->puesto_nombre ?? $h->codpuesto), ' -') }}</td>
+                            <td>{{ $h->mesa_num ? 'Mesa ' . $h->mesa_num : 'Rem' }}</td>
                             <td>{{ $h->puesto_comuna ?: '-' }}</td>
                             <td>{{ $h->puesto_direccion ?: '-' }}</td>
                             <td>
@@ -197,7 +199,7 @@
                                 @if(!$h->released_at)
                                     <form method="POST"
                                           action="{{ route('admin.abogados.liberar_coordinador', [$abogado->id, $h->id]) }}"
-                                          onsubmit="return confirm('¿Retirar a este coordinador y liberar el cupo remanente? El registro permanecerá en el historial.');">
+                                          onsubmit="return confirm('¿Retirar a este coordinador y liberar su cupo actual? El registro permanecerá en el historial.');">
                                         @csrf
                                         <button type="submit" class="btn btn-sm btn-outline-danger">
                                             <i class="fas fa-user-minus"></i> Retirar
@@ -210,7 +212,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="text-center text-muted">Sin historial de coordinaciones.</td>
+                            <td colspan="8" class="text-center text-muted">Sin historial de coordinaciones.</td>
                         </tr>
                     @endforelse
                 </tbody>

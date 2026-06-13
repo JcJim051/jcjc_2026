@@ -14,6 +14,7 @@ class AbogadoCoordinacion extends Model
     protected $fillable = [
         'abogado_id',
         'eleccion_id',
+        'eleccion_mesa_id',
         'codpuesto',
         'seller_id',
         'assigned_by',
@@ -28,4 +29,9 @@ class AbogadoCoordinacion extends Model
         'assigned_at' => 'datetime',
         'released_at' => 'datetime',
     ];
+
+    public function mesa()
+    {
+        return $this->belongsTo(EleccionMesa::class, 'eleccion_mesa_id');
+    }
 }

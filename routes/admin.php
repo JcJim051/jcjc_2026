@@ -125,6 +125,10 @@ Route::post('abogados/import-sheet', [AbogadosController::class, 'importFromShee
     ->name('admin.abogados.import_sheet');
 Route::post('abogados/import-coordinadores', [AbogadosController::class, 'importCoordinadores'])
     ->name('admin.abogados.import_coordinadores');
+Route::post('abogados/reubicar-coordinadores/preview', [AbogadosController::class, 'previewReubicarCoordinadores'])
+    ->name('admin.abogados.reubicar_coordinadores.preview');
+Route::post('abogados/reubicar-coordinadores/apply', [AbogadosController::class, 'applyReubicarCoordinadores'])
+    ->name('admin.abogados.reubicar_coordinadores.apply');
 Route::resource('abogados-reuniones', ReunionesAbogadosController::class)
     ->only(['index', 'create', 'store'])
     ->names('admin.abogados_reuniones');

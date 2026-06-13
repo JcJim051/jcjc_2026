@@ -9,6 +9,7 @@ use App\Models\Eleccion;
 use App\Models\Puestos;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -34,6 +35,12 @@ class AbogadosController extends Controller
         'mesa' => ['mesa'],
     ];
 
+    private function hasCoordinatorMesaColumn(): bool
+    {
+        return Schema::hasTable('abogado_coordinaciones')
+            && Schema::hasColumn('abogado_coordinaciones', 'eleccion_mesa_id');
+    }
+
     public function index()
     {
         $abogados = Abogado::orderByDesc('activo')->orderBy('nombre')->get();
@@ -41,9 +48,13 @@ class AbogadosController extends Controller
             ->where('estado', 'activa')
             ->orderByDesc('id')
             ->get(['id', 'nombre', 'tipo', 'estado']);
+        $eleccionesReubicacion = Eleccion::query()
+            ->orderByRaw("CASE WHEN estado = 'activa' THEN 0 ELSE 1 END")
+            ->orderByDesc('id')
+            ->get(['id', 'nombre', 'tipo', 'estado']);
         $eleccionActiva = $this->resolveEleccionId();
 
-        return view('admin.abogados.index', compact('abogados', 'elecciones', 'eleccionActiva'));
+        return view('admin.abogados.index', compact('abogados', 'elecciones', 'eleccionesReubicacion', 'eleccionActiva'));
     }
 
     public function exportar()
@@ -669,7 +680,7 @@ class AbogadosController extends Controller
             ->orderByDesc('id')
             ->get(['id', 'nombre', 'tipo', 'estado']);
         $eleccionActiva = $this->resolveEleccionId();
-        $historialCoordinaciones = AbogadoCoordinacion::query()
+        $historialCoordinacionesQuery = AbogadoCoordinacion::query()
             ->from('abogado_coordinaciones as ac')
             ->leftJoin('elecciones as e', 'e.id', '=', 'ac.eleccion_id')
             ->leftJoin('puestos as p', 'p.codpuesto', '=', 'ac.codpuesto')
@@ -694,8 +705,17 @@ class AbogadosController extends Controller
                 DB::raw('COALESCE(ep.puesto, p.nombre) as puesto_nombre'),
                 'ep.comuna as puesto_comuna',
                 'ep.direccion as puesto_direccion'
-            )
-            ->get();
+            );
+
+        if ($this->hasCoordinatorMesaColumn()) {
+            $historialCoordinacionesQuery
+                ->leftJoin('eleccion_mesas as em', 'em.id', '=', 'ac.eleccion_mesa_id')
+                ->addSelect('em.mesa_num as mesa_num');
+        } else {
+            $historialCoordinacionesQuery->addSelect(DB::raw('NULL as mesa_num'));
+        }
+
+        $historialCoordinaciones = $historialCoordinacionesQuery->get();
 
         return view('admin.abogados.show', compact(
             'abogado',
@@ -1163,6 +1183,80 @@ class AbogadosController extends Controller
             ->with('coordinadores_import_errors', array_slice($errors, 0, 80));
     }
 
+    public function previewReubicarCoordinadores(Request $request)
+    {
+        $data = $request->validate([
+            'eleccion_id' => 'required|integer|exists:elecciones,id',
+        ]);
+
+        $preview = $this->buildCoordinatorRelocationPreview((int) $data['eleccion_id']);
+
+        return view('admin.abogados.reubicar_coordinadores_preview', $preview);
+    }
+
+    public function applyReubicarCoordinadores(Request $request)
+    {
+        $data = $request->validate([
+            'eleccion_id' => 'required|integer|exists:elecciones,id',
+        ]);
+
+        $preview = $this->buildCoordinatorRelocationPreview((int) $data['eleccion_id']);
+        $applied = 0;
+        $touched = 0;
+        $now = Carbon::now('America/Bogota');
+        $userName = optional(auth()->user())->name ?? 'administrador';
+
+        DB::transaction(function () use (&$applied, &$touched, $preview, $now, $userName) {
+            $targets = collect($preview['rows'])
+                ->filter(fn ($row) => !empty($row['target_mesa_id']))
+                ->keyBy('coordinacion_id');
+
+            if ($targets->isEmpty()) {
+                return;
+            }
+
+            $coordinaciones = AbogadoCoordinacion::query()
+                ->whereIn('id', $targets->keys()->all())
+                ->whereNull('released_at')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            foreach ($targets as $coordinacionId => $target) {
+                $coordinacion = $coordinaciones->get($coordinacionId);
+                if (!$coordinacion) {
+                    continue;
+                }
+
+                $currentMesaId = $this->hasCoordinatorMesaColumn() ? (int) $coordinacion->eleccion_mesa_id : 0;
+                $mesaAnterior = $currentMesaId ? ('mesa #' . $target['current_mesa_num']) : 'Rem';
+                if ($currentMesaId !== (int) $target['target_mesa_id']) {
+                    $touched++;
+                }
+
+                if ($this->hasCoordinatorMesaColumn()) {
+                    $coordinacion->eleccion_mesa_id = (int) $target['target_mesa_id'];
+                }
+                $coordinacion->observacion = $this->appendCoordinationNote(
+                    $coordinacion->observacion,
+                    'Ajuste transitorio a ultimas mesas por ' . $userName . ' el ' . $now->format('Y-m-d H:i') .
+                    ': ' . $mesaAnterior . ' -> mesa #' . $target['target_mesa_num']
+                );
+                $coordinacion->save();
+                $applied++;
+            }
+        });
+
+        return view('admin.abogados.reubicar_coordinadores_preview', array_merge($preview, [
+            'applied' => true,
+            'apply_summary' => [
+                'actualizados' => $applied,
+                'cambios_reales' => $touched,
+                'sin_mesa' => $preview['summary']['sin_mesa'],
+            ],
+        ]));
+    }
+
     private function buildEleccionPuestoKey(object $puesto): string
     {
         $codigo = trim((string) ($puesto->codigo_puesto ?? ''));
@@ -1443,6 +1537,158 @@ class AbogadosController extends Controller
             }
         }
         return $labels;
+    }
+
+    private function buildCoordinatorRelocationPreview(int $eleccionId): array
+    {
+        $eleccion = Eleccion::query()->findOrFail($eleccionId, ['id', 'nombre', 'tipo', 'estado']);
+
+        $coordinacionesQuery = DB::table('abogado_coordinaciones as ac')
+            ->join('abogados as a', 'a.id', '=', 'ac.abogado_id')
+            ->where('ac.eleccion_id', $eleccionId)
+            ->whereNull('ac.released_at')
+            ->orderBy('ac.codpuesto')
+            ->orderBy('ac.assigned_at')
+            ->orderBy('ac.id')
+            ->select(
+                'ac.id as coordinacion_id',
+                'ac.codpuesto',
+                'a.nombre as abogado_nombre',
+                'a.cc as abogado_cc'
+            );
+
+        if ($this->hasCoordinatorMesaColumn()) {
+            $coordinacionesQuery
+                ->leftJoin('eleccion_mesas as current_em', 'current_em.id', '=', 'ac.eleccion_mesa_id')
+                ->whereNull('ac.eleccion_mesa_id')
+                ->addSelect('ac.eleccion_mesa_id as current_mesa_id', 'current_em.mesa_num as current_mesa_num');
+        } else {
+            $coordinacionesQuery->addSelect(DB::raw('NULL as current_mesa_id'), DB::raw('NULL as current_mesa_num'));
+        }
+
+        $coordinaciones = $coordinacionesQuery->get();
+
+        $puestos = DB::table('eleccion_puestos')
+            ->where('eleccion_id', $eleccionId)
+            ->get()
+            ->mapWithKeys(function ($puesto) {
+                return [
+                    $this->buildEleccionPuestoKey($puesto) => $puesto,
+                ];
+            });
+
+        $rows = [];
+        $puestosAfectados = [];
+        $puestosConIncidencia = [];
+
+        foreach ($coordinaciones->groupBy('codpuesto') as $codpuesto => $grupo) {
+            $puesto = $puestos->get($codpuesto);
+            $mesasDisponibles = $puesto
+                ? $this->getFreeMesasForCoordinatorAdjustment($eleccionId, (int) $puesto->id)
+                : collect();
+
+            foreach ($grupo as $coord) {
+                $target = $mesasDisponibles->shift();
+                $targetMesaId = $target->id ?? null;
+                $targetMesaNum = $target->mesa_num ?? null;
+                $status = $target ? 'reubicar' : 'sin_mesa';
+                $puestoLabel = $puesto
+                    ? trim(($puesto->municipio ?? '') . ' - ' . ($puesto->puesto ?? $codpuesto), ' -')
+                    : $codpuesto;
+
+                if ($target) {
+                    $puestosAfectados[$codpuesto] = true;
+                } else {
+                    $puestosConIncidencia[$codpuesto] = true;
+                }
+
+                $rows[] = [
+                    'coordinacion_id' => (int) $coord->coordinacion_id,
+                    'codpuesto' => (string) $codpuesto,
+                    'puesto_label' => $puestoLabel,
+                    'municipio' => $puesto->municipio ?? null,
+                    'abogado_nombre' => $coord->abogado_nombre,
+                    'abogado_cc' => $coord->abogado_cc,
+                    'current_mesa_id' => $coord->current_mesa_id ? (int) $coord->current_mesa_id : null,
+                    'current_mesa_num' => $coord->current_mesa_num ? (int) $coord->current_mesa_num : null,
+                    'current_label' => $coord->current_mesa_num ? ('Mesa ' . $coord->current_mesa_num) : 'Rem',
+                    'target_mesa_id' => $targetMesaId ? (int) $targetMesaId : null,
+                    'target_mesa_num' => $targetMesaNum ? (int) $targetMesaNum : null,
+                    'target_label' => $targetMesaNum ? ('Mesa ' . $targetMesaNum) : 'Sin mesa libre',
+                    'status' => $status,
+                ];
+            }
+        }
+
+        $rows = collect($rows)
+            ->sortBy([
+                ['municipio', 'asc'],
+                ['puesto_label', 'asc'],
+                ['target_mesa_num', 'desc'],
+                ['abogado_nombre', 'asc'],
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'eleccion' => $eleccion,
+            'rows' => $rows,
+            'summary' => [
+                'procesados' => count($rows),
+                'reubicables' => collect($rows)->where('status', 'reubicar')->count(),
+                'sin_mesa' => collect($rows)->where('status', 'sin_mesa')->count(),
+                'puestos_afectados' => count($puestosAfectados),
+                'puestos_con_incidencia' => count($puestosConIncidencia),
+            ],
+            'applied' => false,
+        ];
+    }
+
+    private function getFreeMesasForCoordinatorAdjustment(int $eleccionId, int $puestoId)
+    {
+        $ocupadas = DB::table('referidos')
+            ->where('eleccion_id', $eleccionId)
+            ->where('eleccion_puesto_id', $puestoId)
+            ->where('estado', '<>', 'rechazado')
+            ->pluck('mesa_num')
+            ->map(fn ($mesa) => (int) $mesa)
+            ->unique()
+            ->all();
+
+        $ocupadasPorCoordinadores = [];
+        if ($this->hasCoordinatorMesaColumn()) {
+            $ocupadasPorCoordinadores = DB::table('abogado_coordinaciones as ac')
+                ->join('eleccion_mesas as em', 'em.id', '=', 'ac.eleccion_mesa_id')
+                ->where('ac.eleccion_id', $eleccionId)
+                ->whereNull('ac.released_at')
+                ->where('em.eleccion_puesto_id', $puestoId)
+                ->pluck('em.mesa_num')
+                ->map(fn ($mesa) => (int) $mesa)
+                ->unique()
+                ->all();
+        }
+
+        $ocupadas = array_values(array_unique(array_merge($ocupadas, $ocupadasPorCoordinadores)));
+
+        return DB::table('eleccion_mesas')
+            ->where('eleccion_id', $eleccionId)
+            ->where('eleccion_puesto_id', $puestoId)
+            ->whereNotIn('mesa_num', $ocupadas)
+            ->orderByDesc('mesa_num')
+            ->get(['id', 'mesa_num'])
+            ->values();
+    }
+
+    private function appendCoordinationNote(?string $base, string $note): string
+    {
+        $base = trim((string) $base);
+        $note = trim($note);
+
+        if ($base === '') {
+            return $note;
+        }
+
+        return $base . ' | ' . $note;
     }
 
     private function personalChangeRow(array $item, $abogado, ?string $field, ?string $newValue, string $status, string $message): array
