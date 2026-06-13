@@ -25,6 +25,14 @@ class AuthServiceProvider extends ServiceProvider
     {
         $this->registerPolicies();
 
+        Gate::before(function ($user, $ability) {
+            if ((int) ($user->id ?? 0) === 1 || (int) ($user->role ?? 0) === 1) {
+                return true;
+            }
+
+            return null;
+        });
+
         Gate::define('Superuser', function($user){
             if ($user->id == 1) {
                 return true;
