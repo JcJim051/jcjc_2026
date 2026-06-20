@@ -501,6 +501,7 @@ class ReferidosController extends Controller
                 })
                 ->leftJoin('referidos as r', 'r.id', '=', 'ra.best_referido_id')
                 ->leftJoin('personas as p', 'p.id', '=', 'r.persona_id')
+                ->leftJoin('territorio_tokens as tt', 'tt.id', '=', 'r.territorio_token_id')
                 ->leftJoinSub($coordinadoresAgg, 'ca', function ($join) {
                     $join->on('ca.eleccion_mesa_id', '=', 'em.id');
                 })
@@ -529,11 +530,13 @@ class ReferidosController extends Controller
                     DB::raw('COALESCE(p.nombre, a.nombre) as nombre'),
                     DB::raw('COALESCE(p.telefono, a.telefono) as telefono'),
                     DB::raw('COALESCE(p.email, a.correo) as email'),
+                    DB::raw("COALESCE(tt.responsable, '') as responsable"),
                 ]);
         } else {
             $rows = DB::table('referidos as r')
                 ->join('personas as p', 'p.id', '=', 'r.persona_id')
                 ->join('eleccion_puestos as ep', 'ep.id', '=', 'r.eleccion_puesto_id')
+                ->leftJoin('territorio_tokens as tt', 'tt.id', '=', 'r.territorio_token_id')
                 ->where('r.estado', $tipo === 'validados' ? 'validado' : 'asignado')
                 ->whereNotNull('r.mesa_num')
                 ->when($eleccionId, function ($q) use ($eleccionId) {
@@ -557,6 +560,7 @@ class ReferidosController extends Controller
                     'p.nombre',
                     'p.telefono',
                     'p.email',
+                    'tt.responsable',
                 ]);
         }
 
@@ -579,6 +583,7 @@ class ReferidosController extends Controller
                 'Apellido 2' => $this->normalizeMetaText($a2),
                 'Celular' => (string) ($r->telefono ?? ''),
                 'Correo' => mb_strtolower($this->normalizeMetaText((string) ($r->email ?? '')), 'UTF-8'),
+                'Responsable' => $this->normalizeMetaText((string) ($r->responsable ?? '')),
                 'Nivel Educativo' => '',
             ];
         }
@@ -602,6 +607,7 @@ class ReferidosController extends Controller
             'Apellido 2',
             'Celular',
             'Correo',
+            'Responsable',
             'Nivel Educativo',
         ];
 
