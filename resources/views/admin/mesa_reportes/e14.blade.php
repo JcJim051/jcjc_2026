@@ -60,6 +60,41 @@
                 <span class="info-box-number">{{ $rows->whereNotNull('reclamacion_foto_path')->count() }}</span>
             </div>
         </div>
+    
+</div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Villavicencio por comuna</h3></div>
+            <div class="card-body" style="height: 380px;">
+                @if(collect($chartE14VillavicencioComunas ?? [])->isNotEmpty())
+                    <canvas id="chartE14VillavicencioComunas"></canvas>
+                @else
+                    <div class="d-flex align-items-center justify-content-center h-100 text-muted text-center px-3">
+                        No hay datos disponibles para la grafica de Villavicencio con los filtros actuales.
+                    </div>
+                @endif
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Otros municipios</h3></div>
+            <div class="card-body" style="height: 380px;">
+                @if(collect($chartE14Municipios ?? [])->isNotEmpty())
+                    <canvas id="chartE14Municipios"></canvas>
+                @else
+                    <div class="d-flex align-items-center justify-content-center h-100 text-muted text-center px-3">
+                        No hay datos disponibles para la grafica de otros municipios con los filtros actuales.
+                    </div>
+                @endif
+            </div>
+        </div>
     </div>
 </div>
 
@@ -204,8 +239,64 @@
 @stop
 
 @push('js')
+<script src="{{ asset('vendor/chart.js/Chart.bundle.min.js') }}"></script>
 <script>
 (function(){
+    var villavo = @json($chartE14VillavicencioComunas ?? []);
+    var otros = @json($chartE14Municipios ?? []);
+
+    function buildE14BarChart(canvasId, rows, labelKey) {
+        var el = document.getElementById(canvasId);
+        if (!el || typeof Chart === 'undefined' || !rows.length) return;
+
+        new Chart(el.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: rows.map(function (row) { return row[labelKey]; }),
+                datasets: [
+                    {
+                        label: 'Mesas total',
+                        backgroundColor: '#34495e',
+                        data: rows.map(function (row) { return Number(row.mesas_total || 0); })
+                    },
+                    {
+                        label: 'Mesas reportadas',
+                        backgroundColor: '#18a558',
+                        data: rows.map(function (row) { return Number(row.e14 || 0); })
+                    }
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                responsive: true,
+                legend: { position: 'bottom' },
+                tooltips: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        afterBody: function (tooltipItems) {
+                            if (!tooltipItems.length) return '';
+                            var row = rows[tooltipItems[0].index] || {};
+                            return '% avance: ' + Number(row.pct_e14 || 0).toFixed(1) + '%';
+                        }
+                    }
+                },
+                scales: {
+                    xAxes: [{
+                        stacked: false,
+                        ticks: { autoSkip: false, fontSize: 10 }
+                    }],
+                    yAxes: [{
+                        ticks: { beginAtZero: true },
+                        scaleLabel: { display: true, labelString: 'Mesas' }
+                    }]
+                }
+            }
+        });
+    }
+
+    buildE14BarChart('chartE14VillavicencioComunas', villavo, 'comuna');
+    buildE14BarChart('chartE14Municipios', otros, 'municipio');
     $('#e14ComunasTable').DataTable({
         responsive: true,
         scrollX: true,

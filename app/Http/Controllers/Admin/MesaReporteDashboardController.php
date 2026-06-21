@@ -722,11 +722,14 @@ class MesaReporteDashboardController extends Controller
             })
             ->map(function ($group) {
                 $first = $group->first();
+                $mesasTotal = $group->count();
+                $e14 = $group->whereNotNull('e14_reportado_at')->count();
                 return [
                     'municipio' => (string) ($first->municipio ?? 'N/D'),
                     'comuna' => trim((string) ($first->comuna ?? '')) !== '' ? (string) $first->comuna : 'SIN COMUNA',
-                    'mesas_total' => $group->count(),
-                    'e14' => $group->whereNotNull('e14_reportado_at')->count(),
+                    'mesas_total' => $mesasTotal,
+                    'e14' => $e14,
+                    'pct_e14' => $mesasTotal > 0 ? round(($e14 / $mesasTotal) * 100, 1) : 0,
                     'control' => $group->whereNotNull('control_final_at')->count(),
                     'reconteos' => $group->where('reconteo', 1)->count(),
                     'reclamaciones' => $group->where('reclamacion', 1)->count(),
@@ -784,6 +787,37 @@ class MesaReporteDashboardController extends Controller
             ->filter(fn ($row) => trim((string) ($row['municipio'] ?? '')) !== 'VILLAVICENCIO')
             ->values();
 
+        $chartE14VillavicencioComunas = $resumenComunaE14
+            ->filter(fn ($row) => trim((string) ($row['municipio'] ?? '')) === 'VILLAVICENCIO')
+            ->sortBy([
+                ['pct_e14', 'desc'],
+                ['e14', 'desc'],
+                ['comuna', 'asc'],
+            ])
+            ->values();
+
+        $chartE14Municipios = $resumenComunaE14
+            ->filter(fn ($row) => trim((string) ($row['municipio'] ?? '')) !== 'VILLAVICENCIO')
+            ->groupBy('municipio')
+            ->map(function ($group) {
+                $first = $group->first();
+                $mesasTotal = (int) $group->sum('mesas_total');
+                $e14 = (int) $group->sum('e14');
+
+                return [
+                    'municipio' => (string) ($first['municipio'] ?? 'N/D'),
+                    'mesas_total' => $mesasTotal,
+                    'e14' => $e14,
+                    'pct_e14' => $mesasTotal > 0 ? round(($e14 / $mesasTotal) * 100, 1) : 0,
+                ];
+            })
+            ->sortBy([
+                ['pct_e14', 'desc'],
+                ['e14', 'desc'],
+                ['municipio', 'asc'],
+            ])
+            ->values();
+
         return [
             'eleccionId' => $eleccionId,
             'eleccionOperativa' => $eleccionOperativa,
@@ -802,6 +836,8 @@ class MesaReporteDashboardController extends Controller
             'resumenPuestoE14' => $resumenPuestoE14,
             'chartVillavicencio' => $chartVillavicencio,
             'chartMunicipios' => $chartMunicipios,
+            'chartE14VillavicencioComunas' => $chartE14VillavicencioComunas,
+            'chartE14Municipios' => $chartE14Municipios,
             'flujoConfig' => [
                 'afluencia' => $eleccionOperativa ? (bool) $eleccionOperativa->habilitar_afluencia : true,
                 'datos_e14' => $eleccionOperativa ? (bool) $eleccionOperativa->habilitar_datos_e14 : true,
