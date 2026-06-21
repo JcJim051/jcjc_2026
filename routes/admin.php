@@ -204,10 +204,13 @@ Route::get('cne-import/referidos-masivos/{batch}/errors', [CneImportController::
 
 Route::middleware('can:dashboard-operativo-ver')->group(function () {
     Route::get('mesa-reportes/dashboard', [MesaReporteDashboardController::class, 'index'])->name('admin.mesa_reportes.dashboard');
+    Route::get('mesa-reportes/afluencia', [MesaReporteDashboardController::class, 'afluencia'])->name('admin.mesa_reportes.afluencia');
+    Route::get('mesa-reportes/e14', [MesaReporteDashboardController::class, 'e14'])->name('admin.mesa_reportes.e14');
 });
 
 Route::middleware('can:dashboard-operativo-gestionar')->group(function () {
     Route::post('mesa-reportes/steps', [MesaReporteDashboardController::class, 'updateSteps'])->name('admin.mesa_reportes.steps');
-    Route::get('mesa-reportes/afluencia', [MesaReporteDashboardController::class, 'afluencia'])->name('admin.mesa_reportes.afluencia');
-    Route::get('mesa-reportes/e14', [MesaReporteDashboardController::class, 'e14'])->name('admin.mesa_reportes.e14');
+    Route::get('mesa-reportes/afluencia/export-comunas', [MesaReporteDashboardController::class, 'exportAfluenciaComunas'])->name('admin.mesa_reportes.afluencia.export_comunas');
+    Route::get('mesa-reportes/afluencia/export-puestos', [MesaReporteDashboardController::class, 'exportAfluenciaPuestos'])->name('admin.mesa_reportes.afluencia.export_puestos');
+    Route::get('mesa-reportes/afluencia/export-mesas', [MesaReporteDashboardController::class, 'exportAfluenciaMesas'])->name('admin.mesa_reportes.afluencia.export_mesas');
 });

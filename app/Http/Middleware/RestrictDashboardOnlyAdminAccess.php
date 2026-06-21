@@ -19,6 +19,8 @@ class RestrictDashboardOnlyAdminAccess
         $allowedRoutes = [
             'admin.home',
             'admin.mesa_reportes.dashboard',
+            'admin.mesa_reportes.afluencia',
+            'admin.mesa_reportes.e14',
         ];
 
         $routeName = optional($request->route())->getName();

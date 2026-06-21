@@ -5,7 +5,9 @@
 @stop
 @section('content')
 @include('admin.mesa_reportes.partials.filters')
+@can('dashboard-operativo-gestionar')
 @include('admin.mesa_reportes.partials.step_toggles')
+@endcan
 @include('admin.mesa_reportes.partials.kpis')
 <div class="row mb-3"><div class="col-md-3"><div class="info-box"><span class="info-box-icon bg-success"><i class="fas fa-users"></i></span><div class="info-box-content"><span class="info-box-text">Personas 9:00</span><span class="info-box-number">{{ number_format($kpis['personas_afluencia_9']) }}</span><small>Mesas con reporte: {{ $kpis['mesas_afluencia_9'] }}</small></div></div></div><div class="col-md-3"><div class="info-box"><span class="info-box-icon bg-info"><i class="fas fa-users"></i></span><div class="info-box-content"><span class="info-box-text">Personas 11:00</span><span class="info-box-number">{{ number_format($kpis['personas_afluencia_11']) }}</span><small>Mesas con reporte: {{ $kpis['mesas_afluencia_11'] }}</small></div></div></div><div class="col-md-3"><div class="info-box"><span class="info-box-icon bg-primary"><i class="fas fa-users"></i></span><div class="info-box-content"><span class="info-box-text">Personas 2:00</span><span class="info-box-number">{{ number_format($kpis['personas_afluencia_14']) }}</span><small>Mesas con reporte: {{ $kpis['mesas_afluencia_14'] }}</small></div></div></div><div class="col-md-3"><div class="info-box"><span class="info-box-icon bg-warning"><i class="fas fa-layer-group"></i></span><div class="info-box-content"><span class="info-box-text">Total personas</span><span class="info-box-number">{{ number_format($kpis['personas_afluencia_total']) }}</span><small>3 cortes completos: {{ $kpis['mesas_afluencia_completa'] }}</small></div></div></div></div>
 <div class="row">
@@ -42,8 +44,136 @@
         return 'bg-success text-white';
     };
 @endphp
-<div class="card"><div class="card-header"><h3 class="card-title">Mapa de calor por comuna</h3></div><div class="card-body table-responsive"><table id="afluenciaHeatTable" class="table table-bordered table-sm display nowrap mb-0" style="width:100%"><thead><tr><th>Municipio</th><th>Comuna</th><th>Mesas</th><th>Mesas con reporte</th><th>9:00</th><th>11:00</th><th>2:00</th><th>Total personas</th></tr></thead><tbody>@foreach($resumenComunaAfluencia as $row)<tr><td>{{ $row['municipio'] }}</td><td>{{ $row['comuna'] }}</td><td>{{ $row['mesas_total'] }}</td><td>{{ $row['mesas_con_reporte'] }}</td><td class="{{ $heatClass($row['personas_9'], $max9) }} font-weight-bold">{{ number_format($row['personas_9']) }}</td><td class="{{ $heatClass($row['personas_11'], $max11) }} font-weight-bold">{{ number_format($row['personas_11']) }}</td><td class="{{ $heatClass($row['personas_14'], $max14) }} font-weight-bold">{{ number_format($row['personas_14']) }}</td><td class="{{ $heatClass($row['personas_total'], $maxTotal) }} font-weight-bold">{{ number_format($row['personas_total']) }}</td></tr>@endforeach</tbody></table></div></div>
-<div class="card"><div class="card-header"><h3 class="card-title">Detalle por puesto</h3></div><div class="card-body table-responsive"><table class="table table-bordered table-sm"><thead><tr><th>Municipio</th><th>Puesto</th><th>Mesas</th><th>Afluencia</th><th>E14</th><th>Cierre</th></tr></thead><tbody>@foreach($resumenPuesto as $row)<tr><td>{{ $row['municipio'] }}</td><td>{{ $row['puesto'] }}</td><td>{{ $row['mesas_total'] }}</td><td>{{ $row['afluencia'] }}</td><td>{{ $row['e14'] }}</td><td>{{ $row['control'] }}</td></tr>@endforeach</tbody></table></div></div>
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;">
+        <h3 class="card-title mb-0">Mapa de calor por comuna</h3>
+        <a href="{{ route('admin.mesa_reportes.afluencia.export_comunas', ['eleccion_id' => $eleccionId, 'municipio' => $filtroMunicipio, 'puesto_id' => $filtroPuestoId, 'coordinador_id' => $filtroCoordinadorId]) }}" class="btn btn-success btn-sm">
+            Descargar Excel
+        </a>
+    </div>
+    <div class="card-body table-responsive">
+        <table id="afluenciaHeatTable" class="table table-bordered table-sm display nowrap mb-0" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Municipio</th>
+                    <th>Comuna</th>
+                    <th>Mesas</th>
+                    <th>Mesas con reporte</th>
+                    <th>9:00</th>
+                    <th>11:00</th>
+                    <th>2:00</th>
+                    <th>Total personas</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($resumenComunaAfluencia as $row)
+                    <tr>
+                        <td>{{ $row['municipio'] }}</td>
+                        <td>{{ $row['comuna'] }}</td>
+                        <td>{{ $row['mesas_total'] }}</td>
+                        <td>{{ $row['mesas_con_reporte'] }}</td>
+                        <td class="{{ $heatClass($row['personas_9'], $max9) }} font-weight-bold">{{ number_format($row['personas_9']) }}</td>
+                        <td class="{{ $heatClass($row['personas_11'], $max11) }} font-weight-bold">{{ number_format($row['personas_11']) }}</td>
+                        <td class="{{ $heatClass($row['personas_14'], $max14) }} font-weight-bold">{{ number_format($row['personas_14']) }}</td>
+                        <td class="{{ $heatClass($row['personas_total'], $maxTotal) }} font-weight-bold">{{ number_format($row['personas_total']) }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;">
+        <h3 class="card-title mb-0">Detalle por puesto</h3>
+        <a href="{{ route('admin.mesa_reportes.afluencia.export_puestos', ['eleccion_id' => $eleccionId, 'municipio' => $filtroMunicipio, 'puesto_id' => $filtroPuestoId, 'coordinador_id' => $filtroCoordinadorId]) }}" class="btn btn-success btn-sm">
+            Descargar Excel
+        </a>
+    </div>
+    <div class="card-body table-responsive">
+        <table id="afluenciaPuestosTable" class="table table-bordered table-sm display nowrap mb-0" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Municipio</th>
+                    <th>Comuna</th>
+                    <th>Puesto</th>
+                    <th>Mesas total</th>
+                    <th>Mesas con reporte</th>
+                    <th>Avance %</th>
+                    <th>9:00</th>
+                    <th>11:00</th>
+                    <th>2:00</th>
+                    <th>Total personas</th>
+                    <th>E14</th>
+                    <th>Cierre</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($resumenPuesto as $row)
+                    <tr>
+                        <td>{{ $row['municipio'] }}</td>
+                        <td>{{ $row['comuna'] }}</td>
+                        <td>{{ $row['puesto'] }}</td>
+                        <td>{{ $row['mesas_total'] }}</td>
+                        <td>{{ $row['afluencia'] }}</td>
+                        <td>{{ number_format($row['pct_afluencia'], 1) }}%</td>
+                        <td>{{ number_format($row['personas_9']) }}</td>
+                        <td>{{ number_format($row['personas_11']) }}</td>
+                        <td>{{ number_format($row['personas_14']) }}</td>
+                        <td class="font-weight-bold">{{ number_format($row['personas_total']) }}</td>
+                        <td>{{ $row['e14'] }}</td>
+                        <td>{{ $row['control'] }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;">
+        <h3 class="card-title mb-0">Detalle por mesa</h3>
+        <a href="{{ route('admin.mesa_reportes.afluencia.export_mesas', ['eleccion_id' => $eleccionId, 'municipio' => $filtroMunicipio, 'puesto_id' => $filtroPuestoId, 'coordinador_id' => $filtroCoordinadorId]) }}" class="btn btn-success btn-sm">
+            Descargar Excel
+        </a>
+    </div>
+    <div class="card-body table-responsive">
+        <table id="afluenciaMesasTable" class="table table-bordered table-sm display nowrap mb-0" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Municipio</th>
+                    <th>Comuna</th>
+                    <th>Puesto</th>
+                    <th>Mesa</th>
+                    <th>9:00</th>
+                    <th>11:00</th>
+                    <th>2:00</th>
+                    <th>Total personas</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($rows as $row)
+                    @php
+                        $totalMesa = (int)($row->afluencia_9 ?? 0) + (int)($row->afluencia_11 ?? 0) + (int)($row->afluencia_14 ?? 0);
+                        $estadoMesa = (!is_null($row->afluencia_9) && !is_null($row->afluencia_11) && !is_null($row->afluencia_14))
+                            ? 'Completa'
+                            : ((!is_null($row->afluencia_9) || !is_null($row->afluencia_11) || !is_null($row->afluencia_14)) ? 'Parcial' : 'Sin reporte');
+                    @endphp
+                    <tr>
+                        <td>{{ $row->municipio }}</td>
+                        <td>{{ trim((string)($row->comuna ?? '')) !== '' ? $row->comuna : 'SIN COMUNA' }}</td>
+                        <td>{{ $row->puesto }}</td>
+                        <td>{{ $row->mesa_num }}</td>
+                        <td>{{ is_null($row->afluencia_9) ? '-' : number_format((int) $row->afluencia_9) }}</td>
+                        <td>{{ is_null($row->afluencia_11) ? '-' : number_format((int) $row->afluencia_11) }}</td>
+                        <td>{{ is_null($row->afluencia_14) ? '-' : number_format((int) $row->afluencia_14) }}</td>
+                        <td class="font-weight-bold">{{ number_format($totalMesa) }}</td>
+                        <td>{{ $estadoMesa }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
 @stop
 
 @push('js')
@@ -107,6 +237,26 @@
         scrollX: true,
         pageLength: 25,
         order: [[0, 'asc'], [1, 'asc']],
+        language: {
+            url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'
+        }
+    });
+
+    $('#afluenciaPuestosTable').DataTable({
+        responsive: true,
+        scrollX: true,
+        pageLength: 25,
+        order: [[0, 'asc'], [1, 'asc'], [2, 'asc']],
+        language: {
+            url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'
+        }
+    });
+
+    $('#afluenciaMesasTable').DataTable({
+        responsive: true,
+        scrollX: true,
+        pageLength: 50,
+        order: [[0, 'asc'], [1, 'asc'], [2, 'asc'], [3, 'asc']],
         language: {
             url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'
         }

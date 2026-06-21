@@ -7,6 +7,8 @@ use App\Models\Eleccion;
 use App\Traits\EleccionScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class MesaReporteDashboardController extends Controller
 {
@@ -45,6 +47,190 @@ class MesaReporteDashboardController extends Controller
     {
         $data = $this->buildDashboardData($request);
         return view('admin.mesa_reportes.afluencia', $data);
+    }
+
+    public function exportAfluenciaPuestos(Request $request)
+    {
+        $data = $this->buildDashboardData($request);
+        $rows = collect($data['resumenPuesto'] ?? [])->values();
+        $eleccion = $data['eleccionOperativa'];
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Afluencia por puesto');
+
+        $headers = [
+            'Municipio',
+            'Comuna',
+            'Puesto',
+            'Mesas total',
+            'Mesas con reporte',
+            'Avance %',
+            'Personas 9:00',
+            'Personas 11:00',
+            'Personas 2:00',
+            'Total personas',
+            'E14',
+            'Cierre',
+        ];
+
+        foreach ($headers as $index => $header) {
+            $sheet->setCellValueByColumnAndRow($index + 1, 1, $header);
+        }
+
+        $rowNumber = 2;
+        foreach ($rows as $row) {
+            $sheet->setCellValueByColumnAndRow(1, $rowNumber, $row['municipio'] ?? '');
+            $sheet->setCellValueByColumnAndRow(2, $rowNumber, $row['comuna'] ?? '');
+            $sheet->setCellValueByColumnAndRow(3, $rowNumber, $row['puesto'] ?? '');
+            $sheet->setCellValueByColumnAndRow(4, $rowNumber, (int) ($row['mesas_total'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(5, $rowNumber, (int) ($row['afluencia'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(6, $rowNumber, (float) ($row['pct_afluencia'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(7, $rowNumber, (int) ($row['personas_9'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(8, $rowNumber, (int) ($row['personas_11'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(9, $rowNumber, (int) ($row['personas_14'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(10, $rowNumber, (int) ($row['personas_total'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(11, $rowNumber, (int) ($row['e14'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(12, $rowNumber, (int) ($row['control'] ?? 0));
+            $rowNumber++;
+        }
+
+        foreach (range('A', 'L') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $safeName = $eleccion ? preg_replace('/[^A-Za-z0-9_-]+/', '_', (string) $eleccion->nombre) : 'eleccion';
+        $fileName = 'afluencia_puestos_' . trim((string) $safeName, '_') . '_' . now()->format('Ymd_His') . '.xlsx';
+
+        $tempPath = tempnam(sys_get_temp_dir(), 'afluencia_puestos_');
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($tempPath);
+
+        return response()->download($tempPath, $fileName)->deleteFileAfterSend(true);
+    }
+
+    public function exportAfluenciaComunas(Request $request)
+    {
+        $data = $this->buildDashboardData($request);
+        $rows = collect($data['resumenComunaAfluencia'] ?? [])->values();
+        $eleccion = $data['eleccionOperativa'];
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Afluencia por comuna');
+
+        $headers = [
+            'Municipio',
+            'Comuna',
+            'Mesas total',
+            'Mesas con reporte',
+            '9:00',
+            '11:00',
+            '2:00',
+            'Total personas',
+        ];
+
+        foreach ($headers as $index => $header) {
+            $sheet->setCellValueByColumnAndRow($index + 1, 1, $header);
+        }
+
+        $rowNumber = 2;
+        foreach ($rows as $row) {
+            $sheet->setCellValueByColumnAndRow(1, $rowNumber, $row['municipio'] ?? '');
+            $sheet->setCellValueByColumnAndRow(2, $rowNumber, $row['comuna'] ?? '');
+            $sheet->setCellValueByColumnAndRow(3, $rowNumber, (int) ($row['mesas_total'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(4, $rowNumber, (int) ($row['mesas_con_reporte'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(5, $rowNumber, (int) ($row['personas_9'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(6, $rowNumber, (int) ($row['personas_11'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(7, $rowNumber, (int) ($row['personas_14'] ?? 0));
+            $sheet->setCellValueByColumnAndRow(8, $rowNumber, (int) ($row['personas_total'] ?? 0));
+            $rowNumber++;
+        }
+
+        foreach (range('A', 'H') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $safeName = $eleccion ? preg_replace('/[^A-Za-z0-9_-]+/', '_', (string) $eleccion->nombre) : 'eleccion';
+        $fileName = 'afluencia_comunas_' . trim((string) $safeName, '_') . '_' . now()->format('Ymd_His') . '.xlsx';
+
+        $tempPath = tempnam(sys_get_temp_dir(), 'afluencia_comunas_');
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($tempPath);
+
+        return response()->download($tempPath, $fileName)->deleteFileAfterSend(true);
+    }
+
+    public function exportAfluenciaMesas(Request $request)
+    {
+        $data = $this->buildDashboardData($request);
+        $rows = collect($data['rows'] ?? [])->map(function ($row) {
+            $personas9 = (int) ($row->afluencia_9 ?? 0);
+            $personas11 = (int) ($row->afluencia_11 ?? 0);
+            $personas14 = (int) ($row->afluencia_14 ?? 0);
+
+            return [
+                'municipio' => (string) ($row->municipio ?? ''),
+                'comuna' => trim((string) ($row->comuna ?? '')) !== '' ? (string) $row->comuna : 'SIN COMUNA',
+                'puesto' => (string) ($row->puesto ?? ''),
+                'mesa' => (string) ($row->mesa_num ?? ''),
+                'afluencia_9' => $personas9,
+                'afluencia_11' => $personas11,
+                'afluencia_14' => $personas14,
+                'total_personas' => $personas9 + $personas11 + $personas14,
+                'estado' => (!is_null($row->afluencia_9) && !is_null($row->afluencia_11) && !is_null($row->afluencia_14))
+                    ? 'Completa'
+                    : ((!is_null($row->afluencia_9) || !is_null($row->afluencia_11) || !is_null($row->afluencia_14)) ? 'Parcial' : 'Sin reporte'),
+            ];
+        })->values();
+        $eleccion = $data['eleccionOperativa'];
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Afluencia por mesa');
+
+        $headers = [
+            'Municipio',
+            'Comuna',
+            'Puesto',
+            'Mesa',
+            '9:00',
+            '11:00',
+            '2:00',
+            'Total personas',
+            'Estado',
+        ];
+
+        foreach ($headers as $index => $header) {
+            $sheet->setCellValueByColumnAndRow($index + 1, 1, $header);
+        }
+
+        $rowNumber = 2;
+        foreach ($rows as $row) {
+            $sheet->setCellValueByColumnAndRow(1, $rowNumber, $row['municipio']);
+            $sheet->setCellValueByColumnAndRow(2, $rowNumber, $row['comuna']);
+            $sheet->setCellValueByColumnAndRow(3, $rowNumber, $row['puesto']);
+            $sheet->setCellValueByColumnAndRow(4, $rowNumber, $row['mesa']);
+            $sheet->setCellValueByColumnAndRow(5, $rowNumber, $row['afluencia_9']);
+            $sheet->setCellValueByColumnAndRow(6, $rowNumber, $row['afluencia_11']);
+            $sheet->setCellValueByColumnAndRow(7, $rowNumber, $row['afluencia_14']);
+            $sheet->setCellValueByColumnAndRow(8, $rowNumber, $row['total_personas']);
+            $sheet->setCellValueByColumnAndRow(9, $rowNumber, $row['estado']);
+            $rowNumber++;
+        }
+
+        foreach (range('A', 'I') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $safeName = $eleccion ? preg_replace('/[^A-Za-z0-9_-]+/', '_', (string) $eleccion->nombre) : 'eleccion';
+        $fileName = 'afluencia_mesas_' . trim((string) $safeName, '_') . '_' . now()->format('Ymd_His') . '.xlsx';
+
+        $tempPath = tempnam(sys_get_temp_dir(), 'afluencia_mesas_');
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($tempPath);
+
+        return response()->download($tempPath, $fileName)->deleteFileAfterSend(true);
     }
 
     public function e14(Request $request)
@@ -133,16 +319,27 @@ class MesaReporteDashboardController extends Controller
 
         $resumenPuesto = $rows->groupBy('puesto_id')->map(function ($group) {
             $first = $group->first();
+            $mesasConReporte = $group->filter(fn ($r) => !is_null($r->afluencia_9) || !is_null($r->afluencia_11) || !is_null($r->afluencia_14))->count();
+            $mesasTotal = $group->count();
+            $personas9 = (int) $group->sum(fn ($r) => (int) ($r->afluencia_9 ?? 0));
+            $personas11 = (int) $group->sum(fn ($r) => (int) ($r->afluencia_11 ?? 0));
+            $personas14 = (int) $group->sum(fn ($r) => (int) ($r->afluencia_14 ?? 0));
             return [
                 'puesto_id' => $first->puesto_id,
                 'municipio' => $first->municipio,
+                'comuna' => trim((string) ($first->comuna ?? '')) !== '' ? $first->comuna : 'SIN COMUNA',
                 'puesto' => $first->puesto,
-                'mesas_total' => $group->count(),
-                'afluencia' => $group->filter(fn ($r) => !is_null($r->afluencia_9) || !is_null($r->afluencia_11) || !is_null($r->afluencia_14))->count(),
+                'mesas_total' => $mesasTotal,
+                'afluencia' => $mesasConReporte,
+                'pct_afluencia' => $mesasTotal > 0 ? round(($mesasConReporte / $mesasTotal) * 100, 1) : 0,
+                'personas_9' => $personas9,
+                'personas_11' => $personas11,
+                'personas_14' => $personas14,
+                'personas_total' => $personas9 + $personas11 + $personas14,
                 'e14' => $group->whereNotNull('e14_reportado_at')->count(),
                 'control' => $group->whereNotNull('control_final_at')->count(),
             ];
-        })->sortBy([['municipio', 'asc'], ['puesto', 'asc']])->values();
+        })->sortBy([['municipio', 'asc'], ['comuna', 'asc'], ['puesto', 'asc']])->values();
 
         $resumenCoordinador = $rows->filter(fn ($r) => !empty($r->coordinador_id))->groupBy('coordinador_id')->map(function ($group) {
             $first = $group->first();
