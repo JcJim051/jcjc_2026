@@ -166,6 +166,7 @@ Route::post('territorio-tokens', [TerritorioTokensController::class, 'store'])->
 Route::post('territorio-tokens/bloquear-todos', [TerritorioTokensController::class, 'bloquearTodos'])->name('admin.territorio_tokens.bloquear_todos');
 Route::get('territorio-tokens/municipios', [TerritorioTokensController::class, 'municipios'])->name('admin.territorio_tokens.municipios');
 Route::get('territorio-tokens/comunas', [TerritorioTokensController::class, 'comunas'])->name('admin.territorio_tokens.comunas');
+Route::get('territorio-tokens/zonas', [TerritorioTokensController::class, 'zonas'])->name('admin.territorio_tokens.zonas');
 Route::get('territorio-tokens/{token}/proyeccion', [TerritorioTokensController::class, 'projection'])->name('admin.territorio_tokens.projection');
 Route::post('territorio-tokens/{token}/toggle', [TerritorioTokensController::class, 'toggle'])->name('admin.territorio_tokens.toggle');
 Route::put('territorio-tokens/{token}', [TerritorioTokensController::class, 'update'])->name('admin.territorio_tokens.update');

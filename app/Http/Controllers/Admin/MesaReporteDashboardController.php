@@ -4,17 +4,21 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Candidato;
+use App\Models\ComisionMesaComentario;
 use App\Models\Eleccion;
 use App\Models\PuestoReporte;
+use App\Traits\BuildsMesaAlertas;
 use App\Traits\EleccionScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class MesaReporteDashboardController extends Controller
 {
     use EleccionScope;
+    use BuildsMesaAlertas;
 
     public function updateSteps(Request $request)
     {
@@ -304,12 +308,21 @@ class MesaReporteDashboardController extends Controller
             }
         }
 
+        $e14DetalleRows = $this->buildAdminE14DetailRows((int) $data['eleccionId'], $mesaRow['row']->e14_detalle);
+        $comentarios = ComisionMesaComentario::query()
+            ->where('eleccion_id', $data['eleccionId'])
+            ->where('eleccion_mesa_id', $mesa)
+            ->latest()
+            ->get();
+
         return view('admin.mesa_reportes.show', [
             'eleccionId' => $data['eleccionId'],
             'eleccionOperativa' => $data['eleccionOperativa'],
             'mesa' => $mesaRow,
             'coordinadores' => $coordinadores,
             'reclamacionCandidato' => $reclamacionCandidato,
+            'e14DetalleRows' => $e14DetalleRows,
+            'comentarios' => $comentarios,
         ]);
     }
 
@@ -520,6 +533,39 @@ class MesaReporteDashboardController extends Controller
         return response()->download($tempPath, $fileName)->deleteFileAfterSend(true);
     }
 
+
+    private function buildAdminE14DetailRows(int $eleccionId, $detalle)
+    {
+        if (is_string($detalle)) {
+            $decoded = json_decode($detalle, true);
+            $detalle = is_array($decoded) ? $decoded : [];
+        }
+
+        $detalle = is_array($detalle) ? collect($detalle) : collect();
+        $detalleByCandidateId = $detalle->keyBy(function ($item) {
+            return (int) ($item['candidato_id'] ?? 0);
+        });
+
+        return Candidato::query()
+            ->where('eleccion_id', $eleccionId)
+            ->where('activo', 1)
+            ->whereNotNull('campo_e14')
+            ->orderBy('campo_e14')
+            ->orderBy('codigo')
+            ->get()
+            ->map(function ($candidate) use ($detalleByCandidateId) {
+                $saved = $detalleByCandidateId->get((int) $candidate->id, []);
+
+                return [
+                    'candidato_id' => (int) $candidate->id,
+                    'codigo' => (string) ($saved['codigo'] ?? $candidate->codigo ?? '-'),
+                    'nombre' => (string) ($saved['nombre'] ?? $candidate->nombre ?? '-'),
+                    'votos' => (int) ($saved['votos'] ?? 0),
+                ];
+            })
+            ->values();
+    }
+
     private function buildDashboardData(Request $request): array
     {
         $user = auth()->user();
@@ -529,45 +575,26 @@ class MesaReporteDashboardController extends Controller
         $puestoId = (int) $request->get('puesto_id', 0);
         $coordinadorId = (int) $request->get('coordinador_id', 0);
 
-        $base = DB::table('eleccion_mesas as em')
-            ->join('eleccion_puestos as ep', 'ep.id', '=', 'em.eleccion_puesto_id')
-            ->leftJoin('mesa_reportes as mr', 'mr.eleccion_mesa_id', '=', 'em.id')
-            ->leftJoin('abogados as a', 'a.id', '=', 'mr.abogado_id')
-            ->where('em.eleccion_id', $eleccionId);
-        $this->applyEleccionScope($base, $eleccionId, 'ep');
-        if ($user) {
-            $this->applyUserGeoScope($base, $user, 'ep');
-            $this->applyCandidateScope($base, $user, 'em', $eleccionId);
-        }
-        if ($municipio !== '') {
-            $base->where('ep.municipio', $municipio);
-        }
-        if ($puestoId > 0) {
-            $base->where('ep.id', $puestoId);
-        }
-        if ($coordinadorId > 0) {
-            $base->where('mr.abogado_id', $coordinadorId);
-        }
-
-        $rows = (clone $base)->get([
-            'em.id as mesa_id', 'em.mesa_num', 'ep.id as puesto_id', 'ep.municipio', 'ep.comuna', 'ep.puesto',
-            'mr.id as reporte_id', 'mr.afluencia_9', 'mr.afluencia_11', 'mr.afluencia_14', 'mr.e14_reportado_at',
-            'mr.control_final_at', 'mr.reconteo', 'mr.reclamacion', 'mr.reclamacion_origen', 'mr.reclamacion_foto_path',
-            'mr.jurados_firmaron', 'mr.e14_foto_path', 'mr.e14_detalle', 'mr.censo_mesa', 'mr.votos_en_urna',
-            'mr.votos_incinerados', 'mr.votos_blanco', 'mr.votos_nulos', 'mr.votos_no_marcados',
-            'mr.reclamacion_candidato_id', 'mr.reclamacion_comentario', 'a.nombre as coordinador_nombre', 'mr.abogado_id as coordinador_id',
+        $rows = $this->loadMesaReporteRows($eleccionId, $user, [
+            'municipio' => $municipio,
+            'puesto_id' => $puestoId,
+            'coordinador_id' => $coordinadorId,
         ]);
 
         $visiblePuestoIds = $rows->pluck('puesto_id')->filter()->unique()->values();
-        $puestoReportes = PuestoReporte::query()
-            ->where('eleccion_id', $eleccionId)
-            ->when($visiblePuestoIds->isNotEmpty(), function ($query) use ($visiblePuestoIds) {
-                $query->whereIn('eleccion_puesto_id', $visiblePuestoIds->all());
-            }, function ($query) {
-                $query->whereRaw('1 = 0');
-            })
-            ->get()
-            ->keyBy('eleccion_puesto_id');
+        $puestoReportes = collect();
+
+        if (Schema::hasTable('puesto_reportes')) {
+            $puestoReportes = PuestoReporte::query()
+                ->where('eleccion_id', $eleccionId)
+                ->when($visiblePuestoIds->isNotEmpty(), function ($query) use ($visiblePuestoIds) {
+                    $query->whereIn('eleccion_puesto_id', $visiblePuestoIds->all());
+                }, function ($query) {
+                    $query->whereRaw('1 = 0');
+                })
+                ->get()
+                ->keyBy('eleccion_puesto_id');
+        }
 
         $totalMesas = $rows->count();
         $mesasAfluencia9 = $rows->whereNotNull('afluencia_9')->count();
@@ -729,8 +756,15 @@ class MesaReporteDashboardController extends Controller
         })->sortBy([['municipio', 'asc'], ['comuna', 'asc'], ['puesto', 'asc']])->values();
 
         $filtros = [
-            'municipios' => (clone $base)->select('ep.municipio')->distinct()->orderBy('ep.municipio')->pluck('ep.municipio'),
-            'puestos' => (clone $base)->select('ep.id', 'ep.puesto', 'ep.municipio')->distinct()->orderBy('ep.municipio')->orderBy('ep.puesto')->get(),
+            'municipios' => $rows->pluck('municipio')->filter()->unique()->sort()->values(),
+            'puestos' => $rows->groupBy('puesto_id')->map(function ($group) {
+                $first = $group->first();
+                return (object) [
+                    'id' => $first->puesto_id,
+                    'puesto' => $first->puesto,
+                    'municipio' => $first->municipio,
+                ];
+            })->sortBy([['municipio', 'asc'], ['puesto', 'asc']])->values(),
             'coordinadores' => $coordinacionesActivas->unique('abogado_id')->sortBy('abogado_nombre')->values(),
         ];
 
@@ -802,124 +836,17 @@ class MesaReporteDashboardController extends Controller
 
     private function buildMesaAlertRows($rows)
     {
-        return collect($rows)->map(function ($row) {
-            $balance = $this->calculateBalanceSnapshot($row);
-            $hasReclamacion = (int) ($row->reclamacion ?? 0) === 1;
-            $hasReconteo = (int) ($row->reconteo ?? 0) === 1;
-            $jurados = $row->jurados_firmaron;
-            $juradosAlerta = is_null($jurados)
-                ? 'Pendiente'
-                : ((int) $jurados < 6 ? 'Alerta' : 'OK');
-
-            return [
-                'mesa_id' => (int) $row->mesa_id,
-                'puesto_id' => (int) $row->puesto_id,
-                'municipio' => (string) ($row->municipio ?? ''),
-                'comuna' => trim((string) ($row->comuna ?? '')) !== '' ? (string) $row->comuna : 'SIN COMUNA',
-                'puesto' => (string) ($row->puesto ?? ''),
-                'mesa_num' => (string) ($row->mesa_num ?? ''),
-                'coordinador_reporto' => (string) ($row->coordinador_nombre ?: 'N/D'),
-                'coordinador_id' => $row->coordinador_id,
-                'e14_estado' => $row->e14_reportado_at ? 'Sí' : 'No',
-                'control_estado' => $row->control_final_at ? 'Completo' : 'Pendiente',
-                'balance_alerta' => $balance['status'],
-                'balance_resumen' => $balance['summary'],
-                'balance_expected' => $balance['expected'],
-                'balance_actual' => $balance['actual'],
-                'balance_total_votos' => $balance['votes_total'],
-                'reclamacion_alerta' => $hasReclamacion ? 'Alerta' : 'OK',
-                'reclamacion_resumen' => $hasReclamacion ? (($row->reclamacion_origen ?? '') === 'nuestra' ? 'Nuestra' : 'Otro candidato') : 'No',
-                'reconteo_alerta' => $hasReconteo ? 'Alerta' : 'OK',
-                'reconteo_resumen' => $hasReconteo ? 'Sí' : 'No',
-                'jurados_firmaron' => is_null($jurados) ? 'Pendiente' : (string) $jurados,
-                'jurados_alerta' => $juradosAlerta,
-                'row' => $row,
-            ];
-        })->values();
+        return $this->mapMesaAlertRows($rows);
     }
 
     private function calculateBalanceSnapshot($row): array
     {
-        $detalle = $row->e14_detalle;
-
-        if (is_string($detalle)) {
-            $decoded = json_decode($detalle, true);
-            $detalle = is_array($decoded) ? $decoded : null;
-        }
-
-        $required = [
-            $row->votos_en_urna,
-            $row->votos_incinerados,
-            $row->votos_blanco,
-            $row->votos_nulos,
-            $row->votos_no_marcados,
-        ];
-
-        if (collect($required)->contains(fn ($value) => is_null($value)) || !is_array($detalle)) {
-            return [
-                'status' => 'Pendiente',
-                'summary' => 'Pendiente',
-                'expected' => null,
-                'actual' => null,
-                'votes_total' => null,
-            ];
-        }
-
-        $candidateVotes = collect($detalle)->sum(function ($item) {
-            return (int) ($item['votos'] ?? 0);
-        });
-
-        $totalVotos = $candidateVotes
-            + (int) $row->votos_blanco
-            + (int) $row->votos_nulos
-            + (int) $row->votos_no_marcados;
-
-        $actual = $totalVotos - (int) $row->votos_incinerados;
-        $expected = (int) $row->votos_en_urna;
-        $ok = $actual === $expected;
-
-        return [
-            'status' => $ok ? 'OK' : 'Alerta',
-            'summary' => $actual . ' / ' . $expected,
-            'expected' => $expected,
-            'actual' => $actual,
-            'votes_total' => $totalVotos,
-        ];
+        return $this->mesaBalanceSnapshot($row);
     }
 
     private function coordinadoresPorPuesto(int $eleccionId, int $puestoId)
     {
-        return DB::table('abogado_coordinaciones as ac')
-            ->join('abogados as a', 'a.id', '=', 'ac.abogado_id')
-            ->leftJoin('eleccion_mesas as em', 'em.id', '=', 'ac.eleccion_mesa_id')
-            ->leftJoin('eleccion_puestos as ep_cod', function ($join) {
-                $join->on('ep_cod.eleccion_id', '=', 'ac.eleccion_id')
-                    ->where(function ($query) {
-                        $query->whereColumn('ep_cod.codigo_puesto', 'ac.codpuesto')
-                            ->orWhereRaw('CONCAT(ep_cod.dd, ep_cod.mm, ep_cod.zz, ep_cod.pp) = ac.codpuesto')
-                            ->orWhere(function ($shortCode) {
-                                $shortCode->whereRaw('CHAR_LENGTH(ac.codpuesto) <= 2')
-                                    ->whereColumn('ep_cod.pp', 'ac.codpuesto');
-                            });
-                    });
-            })
-            ->leftJoin('eleccion_puestos as ep_mesa', 'ep_mesa.id', '=', 'em.eleccion_puesto_id')
-            ->where('ac.eleccion_id', $eleccionId)
-            ->whereNull('ac.released_at')
-            ->get([
-                'ac.id',
-                'ac.abogado_id',
-                'ac.validacion_estado',
-                'ac.eleccion_mesa_id',
-                'a.nombre',
-                'a.telefono',
-                'a.email',
-                DB::raw('COALESCE(ep_mesa.id, ep_cod.id) as puesto_id'),
-                DB::raw('COALESCE(em.mesa_num, NULL) as mesa_num'),
-            ])
-            ->filter(fn ($row) => (int) ($row->puesto_id ?? 0) === $puestoId)
-            ->sortBy('nombre')
-            ->values();
+        return $this->loadCoordinadoresPorPuesto($eleccionId, $puestoId);
     }
 
     private function buildActiveCoordinaciones(int $eleccionId, string $municipio = '', int $puestoId = 0, $user = null)

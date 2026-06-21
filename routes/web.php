@@ -76,6 +76,15 @@ Route::prefix('coordinador-reportes')->middleware('throttle:25,1')->group(functi
     Route::post('{token}/mesa/{mesa}/control', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'saveControl'])->name('public.coordinador_reportes.control');
 });
 
+Route::prefix('comision-alertas')->middleware('throttle:30,1')->group(function () {
+    Route::get('{token}', [App\Http\Controllers\PublicComisionAlertasController::class, 'index'])
+        ->name('public.comision_alertas.index');
+    Route::get('{token}/mesa/{mesa}', [App\Http\Controllers\PublicComisionAlertasController::class, 'show'])
+        ->name('public.comision_alertas.show');
+    Route::post('{token}/mesa/{mesa}/comentarios', [App\Http\Controllers\PublicComisionAlertasController::class, 'storeComentario'])
+        ->name('public.comision_alertas.comentarios.store');
+});
+
 Route::get('/asistencia/reunion/{token}/panel', [AsistenciaReunionController::class, 'panelReunion'])
     ->name('asistencia.reunion.panel');
 Route::get('/asistencia/reunion/{token}', [AsistenciaReunionController::class, 'mostrarFormularioSesion'])

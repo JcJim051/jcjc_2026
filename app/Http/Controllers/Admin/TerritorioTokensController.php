@@ -72,6 +72,8 @@ class TerritorioTokensController extends Controller
                 $links = [];
                 if (($t->modulo_resuelto ?? null) === 'reporte_operativo') {
                     $links[] = 'Reporte: ' . route('public.coordinador_reportes.identify', $t->token);
+                } elseif (($t->modulo_resuelto ?? null) === 'comision_alertas') {
+                    $links[] = 'Comision: ' . route('public.comision_alertas.index', $t->token);
                 } else {
                     if (!$t->es_consulta) {
                         $links[] = 'Formulario: ' . route('public.referidos.form', $t->token);
@@ -81,12 +83,14 @@ class TerritorioTokensController extends Controller
 
                 $sheet->fromArray([
                     $t->id,
-                    ($t->modulo_resuelto === 'reporte_operativo' ? 'Reporte Operativo' : ($t->es_consulta ? 'Consulta' : 'Referidos')), 
+                    ($t->modulo_resuelto === 'reporte_operativo'
+                        ? 'Reporte Operativo'
+                        : (($t->modulo_resuelto === 'comision_alertas') ? 'Comision' : ($t->es_consulta ? 'Consulta' : 'Referidos'))),
                     $t->responsable ?: 'N/D',
                     $t->eleccion_id,
                     $t->eleccion_nombre ?? '',
                     $t->departamento_nombre ?? '',
-                    $t->municipio_nombre ?? '',
+                    ($t->municipio_nombre ?? '') . (($t->modulo_resuelto === 'comision_alertas' && !empty($t->zz_label)) ? ' | ' . $t->zz_label : ''),
                     $t->comuna ?? '',
                     (int) ($t->mesas_total ?? 0),
                     (int) ($t->meta_testigos_pct ?? 100),
@@ -167,11 +171,16 @@ class TerritorioTokensController extends Controller
             $metaPct = (int) (optional($eleccionesMap->get($t->eleccion_id))->meta_testigos_pct ?? 100);
             $metaPct = max(0, min(100, $metaPct));
             $t->meta_testigos_pct = $metaPct;
+            $zonasToken = $this->parseZonasToken($t->zz);
+            $t->zz_label = $this->formatZonasLabel($zonasToken);
 
             $mesasQuery = DB::table('eleccion_mesas as em')
                 ->join('eleccion_puestos as ep', 'ep.id', '=', 'em.eleccion_puesto_id')
                 ->where('em.eleccion_id', $t->eleccion_id);
             $this->applyGeoCodesScope($mesasQuery, $geoCodes, 'ep.dd', 'ep.mm');
+            if (($t->modulo_resuelto ?? null) === 'comision_alertas' && !empty($zonasToken)) {
+                $mesasQuery->whereIn('ep.zz', $zonasToken);
+            }
             $comunasToken = $this->parseComunasToken($t->comuna);
             if (!empty($comunasToken)) {
                 $mesasQuery->whereIn('ep.comuna', $comunasToken);
@@ -184,6 +193,9 @@ class TerritorioTokensController extends Controller
                     $q->whereIn('ep.comuna', $comunasToken);
                 });
             $this->applyGeoCodesScope($puestos, $geoCodes, 'ep.dd', 'ep.mm');
+            if (($t->modulo_resuelto ?? null) === 'comision_alertas' && !empty($zonasToken)) {
+                $puestos->whereIn('ep.zz', $zonasToken);
+            }
             $puestos = $puestos
                 ->pluck('ep.id');
 
@@ -210,22 +222,35 @@ class TerritorioTokensController extends Controller
             }
             $t->meta_pactada = $metaPactada;
 
-            $t->referidos_token_total = (int) ($referidosPorToken[$t->id] ?? 0);
-            $t->referidos_municipio_total = (int) collect($geoCodes)->sum(function ($geoCode) use ($referidosPorMunicipio, $t) {
-                return (int) (($referidosPorMunicipio[$t->eleccion_id . '|' . str_replace('-', '|', $geoCode)]->total ?? 0));
-            });
-            $t->referidos_token_municipio = $t->referidos_token_total . '/' . $t->referidos_municipio_total;
+            if (($t->modulo_resuelto ?? null) === 'comision_alertas') {
+                $t->referidos_token_total = null;
+                $t->referidos_municipio_total = null;
+                $t->referidos_token_municipio = 'N/D';
+                $t->ocupados_total = null;
+                $t->referidos_total = null;
+                $t->faltan_total = null;
+                $t->faltan_pactada = null;
+                $t->avance_pactada_pct = null;
+                $t->meta_objetivo = null;
+                $t->meta_pactada = null;
+            } else {
+                $t->referidos_token_total = (int) ($referidosPorToken[$t->id] ?? 0);
+                $t->referidos_municipio_total = (int) collect($geoCodes)->sum(function ($geoCode) use ($referidosPorMunicipio, $t) {
+                    return (int) (($referidosPorMunicipio[$t->eleccion_id . '|' . str_replace('-', '|', $geoCode)]->total ?? 0));
+                });
+                $t->referidos_token_municipio = $t->referidos_token_total . '/' . $t->referidos_municipio_total;
 
-            $t->ocupados_total = (int) Referido::query()
-                ->where('territorio_token_id', $t->id)
-                ->where('estado', '<>', 'rechazado')
-                ->count();
-            $t->referidos_total = $t->ocupados_total;
-            $t->faltan_total = max($metaObjetivo - $t->ocupados_total, 0);
-            $t->faltan_pactada = max($metaPactada - $t->ocupados_total, 0);
-            $t->avance_pactada_pct = $metaPactada > 0
-                ? round(($t->ocupados_total / $metaPactada) * 100, 1)
-                : null;
+                $t->ocupados_total = (int) Referido::query()
+                    ->where('territorio_token_id', $t->id)
+                    ->where('estado', '<>', 'rechazado')
+                    ->count();
+                $t->referidos_total = $t->ocupados_total;
+                $t->faltan_total = max($metaObjetivo - $t->ocupados_total, 0);
+                $t->faltan_pactada = max($metaPactada - $t->ocupados_total, 0);
+                $t->avance_pactada_pct = $metaPactada > 0
+                    ? round(($t->ocupados_total / $metaPactada) * 100, 1)
+                    : null;
+            }
             return $t;
         });
 
@@ -321,21 +346,51 @@ class TerritorioTokensController extends Controller
         return response()->json(['results' => $items]);
     }
 
+    public function zonas(Request $request)
+    {
+        $eleccionId = (int) $request->get('eleccion_id');
+        $municipioCodigo = trim((string) $request->get('municipio_codigo', ''));
+
+        if ($eleccionId <= 0 || $municipioCodigo === '' || strpos($municipioCodigo, '-') === false) {
+            return response()->json(['results' => []]);
+        }
+
+        [$dd, $mm] = explode('-', $municipioCodigo);
+
+        $items = EleccionPuesto::query()
+            ->where('eleccion_id', $eleccionId)
+            ->where('dd', $dd)
+            ->where('mm', $mm)
+            ->select('zz')
+            ->distinct()
+            ->orderBy('zz')
+            ->get()
+            ->map(fn ($r) => [
+                'id' => $r->zz,
+                'text' => 'Zona ' . $r->zz,
+            ]);
+
+        return response()->json(['results' => $items]);
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
             'eleccion_id' => 'required|integer|exists:elecciones,id',
-            'token_mode' => 'nullable|in:referidos,consulta,reporte_operativo',
+            'token_mode' => 'nullable|in:referidos,consulta,reporte_operativo,comision_alertas',
             'municipio_codigo' => 'nullable|string',
             'municipios_multi' => 'nullable|array',
             'municipios_multi.*' => 'string',
             'comuna' => 'nullable',
             'comuna.*' => 'nullable|string|max:100',
+            'zona' => 'nullable|array',
+            'zona.*' => 'nullable|string|max:2',
             'responsable' => 'nullable|string|max:255',
             'expires_at' => 'nullable|date',
         ]);
 
         $mode = $data['token_mode'] ?? 'referidos';
+        $zonas = $this->normalizeZonasInput($data['zona'] ?? []);
         $municipiosSeleccionados = collect();
         if (!empty($data['municipio_codigo'])) {
             $municipiosSeleccionados->push((string) $data['municipio_codigo']);
@@ -351,8 +406,28 @@ class TerritorioTokensController extends Controller
             return back()->withErrors(['municipio_codigo' => 'Debes seleccionar al menos un municipio.'])->withInput();
         }
 
+        if ($mode === 'comision_alertas' && ($municipiosSeleccionados->count() !== 1 || empty($zonas))) {
+            return back()->withErrors(['zona' => 'Debes seleccionar exactamente un municipio y al menos una zona para la comisión.'])->withInput();
+        }
+
         $first = (string) $municipiosSeleccionados->first();
         [$dd, $mm] = explode('-', $first);
+
+        if ($mode === 'comision_alertas') {
+            $zonasValidas = EleccionPuesto::query()
+                ->where('eleccion_id', (int) $data['eleccion_id'])
+                ->where('dd', $dd)
+                ->where('mm', $mm)
+                ->whereIn('zz', $zonas)
+                ->distinct()
+                ->pluck('zz')
+                ->map(fn ($value) => str_pad(trim((string) $value), 2, '0', STR_PAD_LEFT))
+                ->all();
+
+            if (count(array_diff($zonas, $zonasValidas)) > 0) {
+                return back()->withErrors(['zona' => 'Una o varias zonas seleccionadas no existen en la DIVIPOL de la elección.'])->withInput();
+            }
+        }
 
         $token = Str::random(32);
 
@@ -360,7 +435,8 @@ class TerritorioTokensController extends Controller
             'eleccion_id' => $data['eleccion_id'],
             'dd' => $dd,
             'mm' => $mm,
-            'comuna' => ($mode === 'consulta' || $municipiosSeleccionados->count() > 1)
+            'zz' => $mode === 'comision_alertas' ? implode(',', $zonas) : null,
+            'comuna' => ($mode === 'consulta' || $mode === 'comision_alertas' || $municipiosSeleccionados->count() > 1)
                 ? null
                 : $this->normalizeComunasInput($data['comuna'] ?? null),
             'es_consulta' => $mode === 'consulta',
@@ -400,6 +476,9 @@ class TerritorioTokensController extends Controller
         if ($modulo === 'reporte_operativo') {
             $target = 'reporte';
             $publicUrl = route('public.coordinador_reportes.identify', $token->token);
+        } elseif ($modulo === 'comision_alertas') {
+            $target = 'comision';
+            $publicUrl = route('public.comision_alertas.index', $token->token);
         } else {
             $target = $request->get('target') === 'seguimiento' || $token->es_consulta
                 ? 'seguimiento'
@@ -423,13 +502,16 @@ class TerritorioTokensController extends Controller
             ->select('departamento', 'municipio')
             ->first();
 
+        $zonasLabel = $this->formatZonasLabel($this->parseZonasToken($token->zz));
+
         return view('admin.territorio_tokens.projection', compact(
             'token',
             'target',
             'publicUrl',
             'qrSvg',
             'eleccion',
-            'territorio'
+            'territorio',
+            'zonasLabel'
         ));
     }
 
@@ -455,6 +537,8 @@ class TerritorioTokensController extends Controller
         $data = $request->validate([
             'responsable' => 'nullable|string|max:255',
             'comuna' => 'nullable|string|max:255',
+            'zz' => 'nullable|array',
+            'zz.*' => 'nullable|string|max:2',
             'expires_at' => 'nullable|date',
             'activo' => 'nullable|boolean',
             'municipios_multi' => 'nullable|array',
@@ -481,9 +565,37 @@ class TerritorioTokensController extends Controller
         $token->mm = $mm;
         $token->municipios = $municipios->all();
 
-        if ($token->es_consulta || $municipios->count() > 1) {
+        if (($token->modulo_resuelto ?? null) === 'comision_alertas') {
+            if ($municipios->count() !== 1) {
+                return back()->withErrors(['municipios_multi' => 'El token de comisión debe conservar un solo municipio.'])->withInput();
+            }
+
+            $zonas = $this->normalizeZonasInput($data['zz'] ?? []);
+            if (empty($zonas)) {
+                return back()->withErrors(['zz' => 'Debes seleccionar al menos una zona para el token de comisión.'])->withInput();
+            }
+
+            $zonasValidas = EleccionPuesto::query()
+                ->where('eleccion_id', $token->eleccion_id)
+                ->where('dd', $dd)
+                ->where('mm', $mm)
+                ->whereIn('zz', $zonas)
+                ->distinct()
+                ->pluck('zz')
+                ->map(fn ($value) => str_pad(trim((string) $value), 2, '0', STR_PAD_LEFT))
+                ->all();
+
+            if (count(array_diff($zonas, $zonasValidas)) > 0) {
+                return back()->withErrors(['zz' => 'Una o varias zonas seleccionadas no existen en la DIVIPOL de la elección.'])->withInput();
+            }
+
+            $token->zz = implode(',', $zonas);
+            $token->comuna = null;
+        } elseif ($token->es_consulta || $municipios->count() > 1) {
+            $token->zz = null;
             $token->comuna = null;
         } else {
+            $token->zz = null;
             $token->comuna = $this->normalizeComunasInput($data['comuna'] ?? null);
         }
 
@@ -520,6 +632,42 @@ class TerritorioTokensController extends Controller
             ->unique()
             ->values()
             ->all();
+    }
+
+    private function normalizeZonasInput($value): array
+    {
+        return collect(is_array($value) ? $value : [$value])
+            ->map(fn ($item) => trim((string) $item))
+            ->filter()
+            ->map(fn ($item) => str_pad($item, 2, '0', STR_PAD_LEFT))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function parseZonasToken(?string $value): array
+    {
+        if ($value === null || trim($value) === '') {
+            return [];
+        }
+
+        return collect(explode(',', $value))
+            ->map(fn ($item) => trim((string) $item))
+            ->filter()
+            ->map(fn ($item) => str_pad($item, 2, '0', STR_PAD_LEFT))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function formatZonasLabel($zonas): ?string
+    {
+        $items = collect($zonas)->filter()->values();
+        if ($items->isEmpty()) {
+            return null;
+        }
+
+        return 'Zonas ' . $items->implode(', ');
     }
 
     private function normalizeMunicipioCodes($municipios, ?string $dd, ?string $mm): array

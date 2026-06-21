@@ -26,6 +26,7 @@ class TerritorioToken extends Model
         'eleccion_id',
         'dd',
         'mm',
+        'zz',
         'comuna',
         'es_consulta',
         'municipios',
@@ -41,4 +42,3 @@ class TerritorioToken extends Model
         return $this->modulo ?: ($this->es_consulta ? 'consulta' : 'referidos');
     }
 }
-

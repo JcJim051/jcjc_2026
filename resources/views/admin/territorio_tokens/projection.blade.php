@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
-    <title>QR {{ $target === 'seguimiento' ? 'Avance' : ($target === 'reporte' ? 'Reporte operativo' : 'Referidos') }} | Testiapp</title>
+    <title>QR {{ $target === 'seguimiento' ? 'Avance' : ($target === 'reporte' ? 'Reporte operativo' : ($target === 'comision' ? 'Alertas por zona electoral' : 'Referidos')) }} | Testiapp</title>
     <link rel="icon" href="{{ asset('favicons/favicon.png') }}">
     <style>
         :root {
@@ -112,18 +112,20 @@
     <main class="page">
         <section class="info">
             <div class="brand"><img src="{{ asset('img/logo.png') }}" alt="Testiapp"><span>Testiapp</span></div>
-            <div class="eyebrow">{{ $target === 'seguimiento' ? 'Consulta de avance' : ($target === 'reporte' ? 'Reporte operativo por coordinador' : 'Referir testigo') }}</div>
-            <h1>{{ $token->responsable ?: ($target === 'seguimiento' ? 'Avance territorial' : ($target === 'reporte' ? 'Coordinación operativa' : 'Equipo territorial')) }}</h1>
+            <div class="eyebrow">{{ $target === 'seguimiento' ? 'Consulta de avance' : ($target === 'reporte' ? 'Reporte operativo por coordinador' : ($target === 'comision' ? 'Alertas por zona electoral' : 'Referir testigo')) }}</div>
+            <h1>{{ $token->responsable ?: ($target === 'seguimiento' ? 'Avance territorial' : ($target === 'reporte' ? 'Coordinación operativa' : ($target === 'comision' ? 'Alertas por zona electoral' : 'Equipo territorial'))) }}</h1>
             <p class="instruction">
                 {{ $target === 'seguimiento'
                     ? 'Escanea el código para consultar el avance y detalle de cobertura.'
                     : ($target === 'reporte'
                         ? 'Escanea el código con tu celular y reporta afluencia, E14 y control final de cada mesa.'
-                        : 'Escanea el código con tu celular y registra un nuevo testigo electoral.') }}
+                        : ($target === 'comision'
+                            ? 'Escanea el código con tu celular y consulta todas las alertas, fotos y detalles de la comisión asignada.'
+                            : 'Escanea el código con tu celular y registra un nuevo testigo electoral.')) }}
             </p>
             <div class="territory">
                 <strong>{{ $territorio->municipio ?? 'Territorio asignado' }}</strong>
-                <span>{{ $territorio->departamento ?? '' }}{{ $token->comuna ? ' · ' . $token->comuna : '' }}</span>
+                <span>{{ $territorio->departamento ?? '' }}{{ $target === 'comision' && !empty($zonasLabel ?? null) ? ' · ' . $zonasLabel : ($token->comuna ? ' · ' . $token->comuna : '') }}</span>
             </div>
             <div class="pills">
                 <span class="pill {{ $token->activo ? 'available' : 'unavailable' }}">{{ $token->activo ? 'Token activo' : 'Token inactivo' }}</span>
@@ -134,7 +136,7 @@
         <section class="qr-panel">
             <div class="qr">{!! $qrSvg !!}</div>
             <div class="qr-footer">
-                <span>{{ $target === 'seguimiento' ? 'Ver seguimiento' : ($target === 'reporte' ? 'Abrir reporte operativo' : 'Abrir formulario') }}</span>
+                <span>{{ $target === 'seguimiento' ? 'Ver seguimiento' : ($target === 'reporte' ? 'Abrir reporte operativo' : ($target === 'comision' ? 'Abrir comisión' : 'Abrir formulario')) }}</span>
                 <span class="expiry" id="expiryText">
                     {{ $token->expires_at ? 'Válido hasta ' . $token->expires_at->format('d/m/Y') : 'Sin fecha de vencimiento' }}
                 </span>

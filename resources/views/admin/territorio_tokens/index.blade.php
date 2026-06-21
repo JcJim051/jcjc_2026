@@ -31,6 +31,7 @@
                                 <option value="referidos">Referir + seguimiento</option>
                                 <option value="consulta">Solo consulta (avance)</option>
                                 <option value="reporte_operativo">Reporte operativo coordinadores</option>
+                                <option value="comision_alertas">Alertas por zona electoral</option>
                             </select>
                         </div>
                     </div>
@@ -61,6 +62,14 @@
                         <div class="form-group">
                             <label>Comunas (opcional)</label>
                             <select name="comuna[]" id="comuna" class="form-control" multiple></select>
+                        </div>
+                    </div>
+                </div>
+                <div class="row" id="zona_wrap" style="display:none;">
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label>Zonas</label>
+                            <select name="zona[]" id="zona" class="form-control" multiple></select>
                         </div>
                     </div>
                 </div>
@@ -129,6 +138,7 @@
                         <th>Tipo</th>
                         <th>Encargado</th>
                         <th>Municipio</th>
+                        <th>Zona</th>
                         <th>Comuna</th>
                         <th>Mesas</th>
                         <th>Meta %</th>
@@ -148,16 +158,17 @@
                     @foreach ($tokens as $t)
                         <tr>
                             <td>{{ $t->id }}</td>
-                            <td>{{ ($t->modulo_resuelto ?? null) === 'reporte_operativo' ? 'Reporte' : ($t->es_consulta ? 'Consulta' : 'Referidos') }}</td>
+                            <td>{{ ($t->modulo_resuelto ?? null) === 'reporte_operativo' ? 'Reporte' : (($t->modulo_resuelto ?? null) === 'comision_alertas' ? 'Comisión' : ($t->es_consulta ? 'Consulta' : 'Referidos')) }}</td>
                             <td>{{ $t->responsable ?: 'N/D' }}</td>
                             <td>
                                 {{ $t->municipios_label ?? ($t->departamento_nombre && $t->municipio_nombre ? ($t->departamento_nombre . ' / ' . $t->municipio_nombre) : 'N/D') }}
                             </td>
-                            <td>{{ $t->comuna }}</td>
+                            <td>{{ ($t->modulo_resuelto ?? null) === 'comision_alertas' ? ($t->zz_label ?? 'N/D') : '-' }}</td>
+                            <td>{{ $t->comuna ?: '-' }}</td>
                             <td><span class="badge badge-info">{{ $t->mesas_total ?? 0 }}</span></td>
-                            <td><span class="badge badge-dark">{{ $t->meta_testigos_pct ?? 100 }}%</span></td>
-                            <td><span class="badge badge-primary">{{ $t->meta_objetivo ?? 0 }}</span></td>
-                            <td><span class="badge badge-secondary">{{ $t->meta_pactada ?? 0 }}</span></td>
+                            <td><span class="badge badge-dark">{{ is_null($t->meta_testigos_pct ?? null) ? '-' : (($t->meta_testigos_pct ?? 100) . '%') }}</span></td>
+                            <td><span class="badge badge-primary">{{ is_null($t->meta_objetivo ?? null) ? '-' : $t->meta_objetivo }}</span></td>
+                            <td><span class="badge badge-secondary">{{ is_null($t->meta_pactada ?? null) ? '-' : $t->meta_pactada }}</span></td>
                             <td>
                                 @if(!is_null($t->avance_pactada_pct))
                                     <span class="badge badge-info">{{ $t->avance_pactada_pct }}%</span>
@@ -165,15 +176,17 @@
                                     <span class="text-muted">N/D</span>
                                 @endif
                             </td>
-                            <td><span class="badge badge-success">{{ $t->ocupados_total ?? 0 }}</span></td>
+                            <td><span class="badge badge-success">{{ is_null($t->ocupados_total ?? null) ? '-' : $t->ocupados_total }}</span></td>
                             <td><span class="badge badge-info">{{ $t->referidos_token_municipio ?? '0/0' }}</span></td>
-                            <td><span class="badge badge-warning">{{ $t->faltan_total ?? 0 }}</span></td>
-                            <td><span class="badge badge-warning">{{ $t->faltan_pactada ?? 0 }}</span></td>
+                            <td><span class="badge badge-warning">{{ is_null($t->faltan_total ?? null) ? '-' : $t->faltan_total }}</span></td>
+                            <td><span class="badge badge-warning">{{ is_null($t->faltan_pactada ?? null) ? '-' : $t->faltan_pactada }}</span></td>
                             <td>
                                 <small>{{ $t->token }}</small><br>
                                 <small>
                                     @if(($t->modulo_resuelto ?? null) === 'reporte_operativo')
                                     <a href="{{ route('public.coordinador_reportes.identify', $t->token) }}" target="_blank">Reporte</a>
+                                    @elseif(($t->modulo_resuelto ?? null) === 'comision_alertas')
+                                    <a href="{{ route('public.comision_alertas.index', $t->token) }}" target="_blank">Comisión</a>
                                     @else
                                         @if(!$t->es_consulta)
                                         <a href="{{ route('public.referidos.form', $t->token) }}" target="_blank">Formulario</a> |
@@ -192,6 +205,8 @@
                                         data-token-id="{{ $t->id }}"
                                         data-responsable="{{ $t->responsable }}"
                                         data-comuna="{{ $t->comuna }}"
+                                        data-modulo="{{ $t->modulo_resuelto ?? '' }}"
+                                        data-zz="{{ $t->zz }}"
                                         data-expires-at="{{ optional($t->expires_at)->format('Y-m-d') }}"
                                         data-activo="{{ $t->activo ? 1 : 0 }}"
                                         data-es-consulta="{{ $t->es_consulta ? 1 : 0 }}"
@@ -207,6 +222,13 @@
                                            class="btn btn-sm btn-success"
                                            title="Proyectar QR para reporte operativo">
                                             <i class="fas fa-qrcode"></i> Reporte
+                                        </a>
+                                    @elseif(($t->modulo_resuelto ?? null) === 'comision_alertas')
+                                        <a href="{{ route('admin.territorio_tokens.projection', ['token' => $t, 'target' => 'comision']) }}"
+                                           target="_blank"
+                                           class="btn btn-sm btn-success"
+                                           title="Proyectar QR para comisión">
+                                            <i class="fas fa-qrcode"></i> Comisión
                                         </a>
                                     @elseif(!$t->es_consulta)
                                         <a href="{{ route('admin.territorio_tokens.projection', ['token' => $t, 'target' => 'formulario']) }}"
@@ -262,6 +284,10 @@
                         <div class="form-group" id="edit_comuna_wrap">
                             <label>Comuna</label>
                             <input type="text" name="comuna" id="edit_comuna" class="form-control" placeholder="Ej: 01COMUNA 1,02COMUNA 2">
+                        </div>
+                        <div class="form-group" id="edit_zona_wrap" style="display:none;">
+                            <label>Zonas</label>
+                            <select name="zz[]" id="edit_zz" class="form-control" multiple></select>
                         </div>
                         <div class="form-group" id="edit_municipios_wrap" style="display:none;">
                             <label>Municipios del token</label>
@@ -454,21 +480,76 @@ $(function(){
         }
     });
 
+    $('#zona').select2({
+        placeholder: 'Seleccione una o varias zonas',
+        width: '100%',
+        closeOnSelect: false,
+        ajax: {
+            url: '{{ route('admin.territorio_tokens.zonas') }}',
+            dataType: 'json',
+            delay: 250,
+            data: function () {
+                return {
+                    eleccion_id: $('#eleccion_id').val(),
+                    municipio_codigo: $('#municipio_codigo').val()
+                };
+            },
+            processResults: function (data) {
+                return data;
+            }
+        }
+    });
+
+    $('#edit_zz').select2({
+        placeholder: 'Seleccione una o varias zonas',
+        width: '100%',
+        closeOnSelect: false,
+        width: '100%',
+        dropdownParent: $('#editTokenModal'),
+        ajax: {
+            url: '{{ route('admin.territorio_tokens.zonas') }}',
+            dataType: 'json',
+            delay: 250,
+            data: function () {
+                return {
+                    eleccion_id: $('#editTokenModal').data('eleccion-id'),
+                    municipio_codigo: $('#editTokenModal').data('municipio-codigo')
+                };
+            },
+            processResults: function (data) {
+                return data;
+            }
+        }
+    });
+
     $('#eleccion_id').on('change', function(){
         $('#municipio_codigo').val(null).trigger('change');
         $('#municipios_multi').val(null).trigger('change');
         $('#comuna').val(null).trigger('change');
+        $('#zona').val(null).trigger('change');
     });
 
     $('#municipio_codigo').on('change', function(){
         $('#comuna').val(null).trigger('change');
+        $('#zona').val(null).trigger('change');
     });
 
     $('#token_mode').on('change', function(){
         var isConsulta = $(this).val() === 'consulta';
-        $('#consulta_municipios_wrap').show();
-        $('#municipio_codigo').prop('required', false).closest('.form-group').parent().show();
-        $('#comuna').prop('disabled', isConsulta);
+        var isComision = $(this).val() === 'comision_alertas';
+        $('#consulta_municipios_wrap').toggle(!isComision);
+        $('#zona_wrap').toggle(isComision);
+        $('#municipio_codigo').prop('required', true).closest('.form-group').parent().show();
+        $('#comuna').prop('disabled', isConsulta || isComision);
+        $('#zona').prop('disabled', !isComision);
+        $('#municipios_multi').prop('disabled', isComision);
+
+        if (isComision) {
+            $('#municipios_multi').val(null).trigger('change');
+            $('#comuna').val(null).trigger('change');
+        } else {
+            $('#zona').val(null).trigger('change');
+        }
     }).trigger('change');
 
     $('#btn_select_all_municipios').on('click', function(){
@@ -529,6 +610,8 @@ $(function(){
         var $btn = $(this);
         var municipios = $btn.data('municipios') || [];
         var esConsulta = String($btn.data('es-consulta')) === '1';
+        var modulo = String($btn.data('modulo') || '');
+        var esComision = modulo === 'comision_alertas';
         var eleccionId = $btn.data('eleccion-id');
         var $modal = $('#editTokenModal');
         var $municipios = $('#edit_municipios_multi');
@@ -541,9 +624,12 @@ $(function(){
         $('#edit_activo').val(String($btn.data('activo')) === '0' ? '0' : '1');
 
         $modal.data('eleccion-id', eleccionId);
-        $('#edit_comuna_wrap').toggle(!esConsulta);
-        $('#edit_comuna').prop('disabled', esConsulta);
-        $('#edit_municipios_wrap').show();
+        $modal.data('municipio-codigo', municipios.length ? municipios[0] : '');
+        $('#edit_comuna_wrap').toggle(!esConsulta && !esComision);
+        $('#edit_comuna').prop('disabled', esConsulta || esComision);
+        $('#edit_zona_wrap').toggle(esComision);
+        $('#edit_zz').prop('disabled', !esComision);
+        $('#edit_municipios_wrap').toggle(!esComision);
 
         $municipios.empty().trigger('change');
         municipios.forEach(function (geo) {
@@ -552,6 +638,15 @@ $(function(){
         });
         $municipios.trigger('change');
         compactMultiSelect($municipios);
+
+        $('#edit_zz').empty().trigger('change');
+        if (esComision && $btn.data('zz')) {
+            String($btn.data('zz')).split(',').map(function (item) { return item.trim(); }).filter(Boolean).forEach(function (zonaValue) {
+                var zonaOption = new Option('Zona ' + zonaValue, zonaValue, true, true);
+                $('#edit_zz').append(zonaOption);
+            });
+            $('#edit_zz').trigger('change');
+        }
     });
 
     $('#tokensTable').DataTable({

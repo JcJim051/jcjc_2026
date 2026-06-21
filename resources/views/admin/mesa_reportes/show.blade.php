@@ -18,12 +18,7 @@
 @section('content')
 @php
     $row = $mesa['row'];
-    $detalle = $row->e14_detalle;
-    if (is_string($detalle)) {
-        $decoded = json_decode($detalle, true);
-        $detalle = is_array($decoded) ? $decoded : [];
-    }
-    $detalle = is_array($detalle) ? $detalle : [];
+    $detalleRows = collect($e14DetalleRows ?? []);
 @endphp
 
 <div class="row">
@@ -139,12 +134,12 @@
             <div class="card-header"><strong>Datos E14</strong></div>
             <div class="card-body">
                 <div class="row mb-3">
-                    <div class="col-md-4"><strong>Censo mesa:</strong> {{ $row->censo_mesa ?? 'N/D' }}</div>
-                    <div class="col-md-4"><strong>Votos en urna:</strong> {{ $row->votos_en_urna ?? 'N/D' }}</div>
-                    <div class="col-md-4"><strong>Incinerados:</strong> {{ $row->votos_incinerados ?? 'N/D' }}</div>
-                    <div class="col-md-4"><strong>Blancos:</strong> {{ $row->votos_blanco ?? 'N/D' }}</div>
-                    <div class="col-md-4"><strong>Nulos:</strong> {{ $row->votos_nulos ?? 'N/D' }}</div>
-                    <div class="col-md-4"><strong>No marcados:</strong> {{ $row->votos_no_marcados ?? 'N/D' }}</div>
+                    <div class="col-md-4"><strong>Censo mesa:</strong> {{ $row->censo_mesa ?? 0 }}</div>
+                    <div class="col-md-4"><strong>Votos en urna:</strong> {{ $row->votos_en_urna ?? 0 }}</div>
+                    <div class="col-md-4"><strong>Incinerados:</strong> {{ $row->votos_incinerados ?? 0 }}</div>
+                    <div class="col-md-4"><strong>Blancos:</strong> {{ $row->votos_blanco ?? 0 }}</div>
+                    <div class="col-md-4"><strong>Nulos:</strong> {{ $row->votos_nulos ?? 0 }}</div>
+                    <div class="col-md-4"><strong>No marcados:</strong> {{ $row->votos_no_marcados ?? 0 }}</div>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm table-bordered">
@@ -156,20 +151,20 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse($detalle as $item)
+                            @forelse($detalleRows as $item)
                                 <tr>
                                     <td>{{ $item['codigo'] ?? '-' }}</td>
                                     <td>{{ $item['nombre'] ?? '-' }}</td>
                                     <td>{{ $item['votos'] ?? 0 }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="3" class="text-center text-muted">No hay detalle E14 registrado.</td></tr>
+                                <tr><td colspan="3" class="text-center text-muted">No hay candidatos configurados para esta elección.</td></tr>
                             @endforelse
                         </tbody>
                         <tfoot>
                             <tr>
                                 <th colspan="2">Total votos calculado</th>
-                                <th>{{ $mesa['balance_total_votos'] ?? 'N/D' }}</th>
+                                <th>{{ $mesa['balance_total_votos'] ?? 0 }}</th>
                             </tr>
                             <tr>
                                 <th colspan="2">Resultado balance</th>
@@ -240,6 +235,23 @@
                 @endif
             </div>
         </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><strong>Observaciones de comisión</strong></div>
+    <div class="card-body">
+        @forelse($comentarios as $comentario)
+            <div class="border rounded p-3 mb-2">
+                <div class="d-flex justify-content-between flex-wrap" style="gap:6px;">
+                    <strong>{{ $comentario->autor_nombre }}</strong>
+                    <span class="text-muted small">{{ optional($comentario->created_at)->format('Y-m-d H:i:s') }}</span>
+                </div>
+                <div class="mt-2">{{ $comentario->comentario }}</div>
+            </div>
+        @empty
+            <div class="text-muted">No hay observaciones de comisión para esta mesa.</div>
+        @endforelse
     </div>
 </div>
 @stop
