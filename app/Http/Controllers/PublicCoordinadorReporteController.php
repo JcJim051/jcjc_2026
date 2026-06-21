@@ -7,6 +7,7 @@ use App\Models\Candidato;
 use App\Models\Eleccion;
 use App\Models\MesaReporte;
 use App\Models\MesaReporteAudit;
+use App\Models\PuestoReporte;
 use App\Models\TerritorioToken;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -121,6 +122,10 @@ class PublicCoordinadorReporteController extends Controller
                 return $mesa;
             });
 
+        $puestoReporte = PuestoReporte::query()
+            ->where('eleccion_puesto_id', $puestoId)
+            ->first();
+
         $abogado = Abogado::find($auth['abogado_id']);
         $eleccion = Eleccion::find($tokenRow->eleccion_id);
         $steps = $this->stepConfig($tokenRow, $eleccion);
@@ -130,6 +135,7 @@ class PublicCoordinadorReporteController extends Controller
             'eleccion' => $eleccion,
             'abogado' => $abogado,
             'puesto' => $puesto,
+            'puestoReporte' => $puestoReporte,
             'mesas' => $mesas,
             'flujo' => [
                 'afluencia' => $steps['afluencia'],
@@ -168,6 +174,48 @@ class PublicCoordinadorReporteController extends Controller
         return view('public.coordinador_reportes.mesa_e14', $context);
     }
 
+    public function savePuestoTestigos(Request $request, string $token)
+    {
+        $tokenRow = $this->getReportTokenOrFail($token);
+        $auth = $this->getSessionAuth($request, $tokenRow);
+        $puestoId = (int) ($auth['selected_puesto_id'] ?? 0);
+
+        if ($puestoId <= 0) {
+            return redirect()->route('public.coordinador_reportes.identify', $tokenRow->token);
+        }
+
+        $puesto = DB::table('eleccion_puestos')
+            ->where('id', $puestoId)
+            ->where('eleccion_id', $tokenRow->eleccion_id)
+            ->first();
+
+        if (!$puesto) {
+            abort(404);
+        }
+
+        $data = $request->validate([
+            'testigos_presentes' => ['required', 'integer', 'min:0'],
+        ]);
+
+        DB::transaction(function () use ($data, $tokenRow, $auth, $puestoId) {
+            $reporte = PuestoReporte::query()->lockForUpdate()->firstOrNew([
+                'eleccion_puesto_id' => $puestoId,
+            ]);
+
+            $reporte->fill([
+                'eleccion_id' => $tokenRow->eleccion_id,
+                'territorio_token_id' => $tokenRow->id,
+                'abogado_id' => $auth['abogado_id'],
+                'testigos_presentes' => (int) $data['testigos_presentes'],
+                'created_by_abogado_id' => $reporte->created_by_abogado_id ?: $auth['abogado_id'],
+                'updated_by_abogado_id' => $auth['abogado_id'],
+            ]);
+            $reporte->save();
+        });
+
+        return back()->with('success', 'Total del puesto guardado correctamente.');
+    }
+
     public function saveAfluencia(Request $request, string $token, int $mesa)
     {
         $tokenRow = $this->getReportTokenOrFail($token);
@@ -182,7 +230,6 @@ class PublicCoordinadorReporteController extends Controller
             'afluencia_9' => ['nullable', 'integer', 'min:0'],
             'afluencia_11' => ['nullable', 'integer', 'min:0'],
             'afluencia_14' => ['nullable', 'integer', 'min:0'],
-            'testigos_presentes' => ['nullable', 'integer', 'min:0'],
         ]);
 
         DB::transaction(function () use ($data, $mesaRow, $tokenRow, $auth) {
@@ -200,7 +247,6 @@ class PublicCoordinadorReporteController extends Controller
                 'afluencia_9' => $data['afluencia_9'] ?? null,
                 'afluencia_11' => $data['afluencia_11'] ?? null,
                 'afluencia_14' => $data['afluencia_14'] ?? null,
-                'testigos_presentes' => $data['testigos_presentes'] ?? null,
                 'created_by_abogado_id' => $reporte->created_by_abogado_id ?: $auth['abogado_id'],
                 'updated_by_abogado_id' => $auth['abogado_id'],
             ]);
@@ -559,6 +605,7 @@ class PublicCoordinadorReporteController extends Controller
         $mesaRow = $this->getMesaAuthorized($tokenRow, $auth, $mesa);
 
         $reporte = MesaReporte::query()->where('eleccion_mesa_id', $mesaRow->mesa_id)->first();
+        $puestoReporte = PuestoReporte::query()->where('eleccion_puesto_id', $mesaRow->puesto_id)->first();
         $candidatos = Candidato::query()
             ->where('eleccion_id', $tokenRow->eleccion_id)
             ->where('activo', 1)
@@ -576,6 +623,7 @@ class PublicCoordinadorReporteController extends Controller
             'abogado' => Abogado::find($auth['abogado_id']),
             'mesa' => $mesaRow,
             'reporte' => $reporte,
+            'puestoReporte' => $puestoReporte,
             'candidatos' => $candidatos,
             'flujo' => [
                 'afluencia' => $steps['afluencia'],

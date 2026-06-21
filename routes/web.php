@@ -66,6 +66,7 @@ Route::prefix('coordinador-reportes')->middleware('throttle:25,1')->group(functi
     Route::post('{token}/identificar', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'lookup'])->name('public.coordinador_reportes.lookup');
     Route::post('{token}/seleccionar-puesto', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'selectPuesto'])->name('public.coordinador_reportes.select_puesto');
     Route::get('{token}/puesto', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'puesto'])->name('public.coordinador_reportes.puesto');
+    Route::post('{token}/puesto/testigos', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'savePuestoTestigos'])->name('public.coordinador_reportes.puesto_testigos');
     Route::get('{token}/mesa/{mesa}', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'mesa'])->name('public.coordinador_reportes.mesa');
     Route::get('{token}/mesa/{mesa}/afluencia', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'mesaAfluencia'])->name('public.coordinador_reportes.mesa_afluencia');
     Route::get('{token}/mesa/{mesa}/e14', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'mesaE14'])->name('public.coordinador_reportes.mesa_e14');

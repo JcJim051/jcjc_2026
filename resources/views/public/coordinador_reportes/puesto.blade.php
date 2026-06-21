@@ -15,6 +15,28 @@
     <div class="col-md-4 mb-2"><div class="metric-box"><div class="label">Afluencia completa</div><div class="value">{{ !empty($flujo['afluencia']) ? $mesas->where('afluencia_completa', true)->count() : 'Off' }}</div></div></div>
     <div class="col-md-4 mb-2"><div class="metric-box"><div class="label">E14 reportados</div><div class="value">{{ !empty($flujo['e14_link']) ? $mesas->whereNotNull('e14_reportado_at')->count() : 'Off' }}</div></div></div>
 </div>
+<div class="card soft-card mb-3" style="border:1px solid rgba(220, 53, 69, 0.22);">
+    <div class="card-header" style="background:#fff5f5;color:#a61d24;font-weight:700;">Reporte total del puesto</div>
+    <div class="card-body">
+        <form method="POST" action="{{ route('public.coordinador_reportes.puesto_testigos', $token->token) }}">
+            @csrf
+            <div class="row align-items-end">
+                <div class="col-lg-8 mb-2">
+                    <label class="mb-1">Total de testigos presentes en el puesto</label>
+                    <input type="number" min="0" name="testigos_presentes" class="form-control form-control-lg" value="{{ old('testigos_presentes', $puestoReporte->testigos_presentes ?? '') }}" placeholder="Ejemplo: 14">
+                    <small class="form-text text-muted">Se reporta una sola vez para todo el puesto, no por mesa.</small>
+                </div>
+                <div class="col-lg-4 mb-2">
+                    <button type="submit" class="btn btn-danger btn-lg btn-block">Reportar total del puesto</button>
+                </div>
+            </div>
+        </form>
+        <div class="mt-2 text-muted small">
+            Último total guardado:
+            <strong>{{ is_null($puestoReporte->testigos_presentes ?? null) ? 'Pendiente' : number_format((int) $puestoReporte->testigos_presentes) }}</strong>
+        </div>
+    </div>
+</div>
 <div class="card soft-card">
     <div class="card-header">Selecciona una mesa</div>
     <div class="card-body table-responsive">

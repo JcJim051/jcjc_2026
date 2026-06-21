@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Candidato;
 use App\Models\Eleccion;
+use App\Models\PuestoReporte;
 use App\Traits\EleccionScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -550,12 +551,23 @@ class MesaReporteDashboardController extends Controller
 
         $rows = (clone $base)->get([
             'em.id as mesa_id', 'em.mesa_num', 'ep.id as puesto_id', 'ep.municipio', 'ep.comuna', 'ep.puesto',
-            'mr.id as reporte_id', 'mr.afluencia_9', 'mr.afluencia_11', 'mr.afluencia_14', 'mr.testigos_presentes', 'mr.e14_reportado_at',
+            'mr.id as reporte_id', 'mr.afluencia_9', 'mr.afluencia_11', 'mr.afluencia_14', 'mr.e14_reportado_at',
             'mr.control_final_at', 'mr.reconteo', 'mr.reclamacion', 'mr.reclamacion_origen', 'mr.reclamacion_foto_path',
             'mr.jurados_firmaron', 'mr.e14_foto_path', 'mr.e14_detalle', 'mr.censo_mesa', 'mr.votos_en_urna',
             'mr.votos_incinerados', 'mr.votos_blanco', 'mr.votos_nulos', 'mr.votos_no_marcados',
             'mr.reclamacion_candidato_id', 'mr.reclamacion_comentario', 'a.nombre as coordinador_nombre', 'mr.abogado_id as coordinador_id',
         ]);
+
+        $visiblePuestoIds = $rows->pluck('puesto_id')->filter()->unique()->values();
+        $puestoReportes = PuestoReporte::query()
+            ->where('eleccion_id', $eleccionId)
+            ->when($visiblePuestoIds->isNotEmpty(), function ($query) use ($visiblePuestoIds) {
+                $query->whereIn('eleccion_puesto_id', $visiblePuestoIds->all());
+            }, function ($query) {
+                $query->whereRaw('1 = 0');
+            })
+            ->get()
+            ->keyBy('eleccion_puesto_id');
 
         $totalMesas = $rows->count();
         $mesasAfluencia9 = $rows->whereNotNull('afluencia_9')->count();
@@ -564,7 +576,7 @@ class MesaReporteDashboardController extends Controller
         $personasAfluencia9 = (int) $rows->sum(fn ($r) => (int) ($r->afluencia_9 ?? 0));
         $personasAfluencia11 = (int) $rows->sum(fn ($r) => (int) ($r->afluencia_11 ?? 0));
         $personasAfluencia14 = (int) $rows->sum(fn ($r) => (int) ($r->afluencia_14 ?? 0));
-        $totalTestigosPresentes = (int) $rows->sum(fn ($r) => (int) ($r->testigos_presentes ?? 0));
+        $totalTestigosPresentes = (int) $puestoReportes->sum(fn ($r) => (int) ($r->testigos_presentes ?? 0));
         $mesasAfluencia = $rows->filter(fn ($r) => !is_null($r->afluencia_9) || !is_null($r->afluencia_11) || !is_null($r->afluencia_14))->count();
         $mesasAfluenciaCompleta = $rows->filter(fn ($r) => !is_null($r->afluencia_9) && !is_null($r->afluencia_11) && !is_null($r->afluencia_14))->count();
         $mesasE14 = $rows->whereNotNull('e14_reportado_at')->count();
@@ -624,15 +636,16 @@ class MesaReporteDashboardController extends Controller
             ];
         })->sortBy([['municipio', 'asc'], ['comuna', 'asc'], ['puesto', 'asc']])->values();
 
-        $resumenPuestoTestigos = $rows->groupBy('puesto_id')->map(function ($group) {
+        $resumenPuestoTestigos = $rows->groupBy('puesto_id')->map(function ($group) use ($puestoReportes) {
             $first = $group->first();
+            $puestoReporte = $puestoReportes->get($first->puesto_id);
             return [
                 'puesto_id' => $first->puesto_id,
                 'municipio' => $first->municipio,
                 'comuna' => trim((string) ($first->comuna ?? '')) !== '' ? $first->comuna : 'SIN COMUNA',
                 'puesto' => $first->puesto,
                 'mesas_total' => $group->count(),
-                'testigos_presentes' => (int) $group->sum(fn ($r) => (int) ($r->testigos_presentes ?? 0)),
+                'testigos_presentes' => (int) ($puestoReporte->testigos_presentes ?? 0),
             ];
         })->sortBy([['municipio', 'asc'], ['comuna', 'asc'], ['puesto', 'asc']])->values();
 

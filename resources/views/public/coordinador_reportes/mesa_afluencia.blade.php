@@ -33,11 +33,6 @@
                             <input type="number" min="0" name="afluencia_14" class="form-control form-control-lg" value="{{ old('afluencia_14', $reporte->afluencia_14 ?? '') }}">
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Testigos presentes en mesas</label>
-                        <input type="number" min="0" name="testigos_presentes" class="form-control form-control-lg" value="{{ old('testigos_presentes', $reporte->testigos_presentes ?? '') }}">
-                        <small class="form-text text-muted">Registra una sola vez el número total de testigos presentes en este puesto al momento del reporte.</small>
-                    </div>
                     <button class="btn btn-primary btn-block" type="submit">Guardar afluencia</button>
                 </form>
             </div>
@@ -49,7 +44,7 @@
             <div class="card-body">
                 <p class="mb-2"><strong>Mesa:</strong> {{ $mesa->mesa_num }}</p>
                 <p class="mb-2"><strong>Puesto:</strong> {{ $mesa->puesto }}</p>
-                <p class="mb-2"><strong>Testigos presentes:</strong> {{ is_null($reporte->testigos_presentes ?? null) ? 'Pendiente' : number_format((int) $reporte->testigos_presentes) }}</p>
+                <p class="mb-2"><strong>Total testigos del puesto:</strong> {{ is_null($puestoReporte->testigos_presentes ?? null) ? 'Pendiente' : number_format((int) $puestoReporte->testigos_presentes) }}</p>
                 <p class="mb-2"><strong>Afluencia:</strong>
                     @if(!is_null($reporte->afluencia_9 ?? null) || !is_null($reporte->afluencia_11 ?? null) || !is_null($reporte->afluencia_14 ?? null))
                         <span class="badge-soft badge-pending">En progreso</span>
