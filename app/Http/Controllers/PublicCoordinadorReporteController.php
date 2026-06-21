@@ -122,13 +122,22 @@ class PublicCoordinadorReporteController extends Controller
             });
 
         $abogado = Abogado::find($auth['abogado_id']);
+        $eleccion = Eleccion::find($tokenRow->eleccion_id);
+        $steps = $this->stepConfig($tokenRow, $eleccion);
 
         return view('public.coordinador_reportes.puesto', [
             'token' => $tokenRow,
-            'eleccion' => Eleccion::find($tokenRow->eleccion_id),
+            'eleccion' => $eleccion,
             'abogado' => $abogado,
             'puesto' => $puesto,
             'mesas' => $mesas,
+            'flujo' => [
+                'afluencia' => $steps['afluencia'],
+                'datos_e14' => $steps['datos_e14'],
+                'informacion_final' => $steps['informacion_final'] && $steps['datos_e14'],
+                'foto' => $steps['foto'] && $steps['datos_e14'],
+                'e14_link' => $steps['datos_e14'] || ($steps['informacion_final'] && $steps['datos_e14']) || ($steps['foto'] && $steps['datos_e14']),
+            ],
         ]);
     }
 
