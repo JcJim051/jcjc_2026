@@ -470,6 +470,84 @@ class TerritorioTokensController extends Controller
             ->with('success', 'Tokens bloqueados: ' . $updated);
     }
 
+    public function generarAlertasMasivo(Request $request)
+    {
+        $eleccionId = $this->resolveEleccionId((int) $request->get('eleccion_id'));
+
+        if (!$eleccionId) {
+            return redirect()->route('admin.territorio_tokens.index')
+                ->with('success', 'No se encontro una eleccion operativa para generar links.');
+        }
+
+        $municipios = EleccionPuesto::query()
+            ->where('eleccion_id', $eleccionId)
+            ->select('dd', 'mm', 'municipio')
+            ->distinct()
+            ->orderBy('dd')
+            ->orderBy('mm')
+            ->get();
+
+        $creados = 0;
+        $omitidos = 0;
+
+        foreach ($municipios as $municipio) {
+            $zonas = EleccionPuesto::query()
+                ->where('eleccion_id', $eleccionId)
+                ->where('dd', $municipio->dd)
+                ->where('mm', $municipio->mm)
+                ->whereNotNull('zz')
+                ->select('zz')
+                ->distinct()
+                ->orderBy('zz')
+                ->pluck('zz')
+                ->map(fn ($value) => str_pad(trim((string) $value), 2, '0', STR_PAD_LEFT))
+                ->filter()
+                ->values()
+                ->all();
+
+            if (empty($zonas)) {
+                continue;
+            }
+
+            foreach ($zonas as $zona) {
+                $payload = [
+                    'eleccion_id' => $eleccionId,
+                    'dd' => $municipio->dd,
+                    'mm' => $municipio->mm,
+                    'zz' => $zona,
+                    'comuna' => null,
+                    'es_consulta' => false,
+                    'municipios' => [$municipio->dd . '-' . $municipio->mm],
+                    'modulo' => 'comision_alertas',
+                    'responsable' => 'Zona ' . $zona . ' - ' . trim((string) $municipio->municipio),
+                ];
+
+                [$tokenCreado, $fueCreado] = $this->firstOrCreateAlertaToken($payload);
+                unset($tokenCreado);
+                $fueCreado ? $creados++ : $omitidos++;
+            }
+
+            $payloadTotal = [
+                'eleccion_id' => $eleccionId,
+                'dd' => $municipio->dd,
+                'mm' => $municipio->mm,
+                'zz' => implode(',', $zonas),
+                'comuna' => null,
+                'es_consulta' => false,
+                'municipios' => [$municipio->dd . '-' . $municipio->mm],
+                'modulo' => 'comision_alertas',
+                'responsable' => trim((string) $municipio->municipio) . ' Total',
+            ];
+
+            [$tokenTotal, $fueCreadoTotal] = $this->firstOrCreateAlertaToken($payloadTotal);
+            unset($tokenTotal);
+            $fueCreadoTotal ? $creados++ : $omitidos++;
+        }
+
+        return redirect()->route('admin.territorio_tokens.index', ['eleccion_id' => $eleccionId])
+            ->with('success', 'Links de alertas generados. Creados: ' . $creados . ' | Omitidos por existir: ' . $omitidos);
+    }
+
     public function projection(Request $request, TerritorioToken $token)
     {
         $modulo = $token->modulo ?: ($token->es_consulta ? 'consulta' : 'referidos');
@@ -718,5 +796,37 @@ class TerritorioTokensController extends Controller
         }
 
         return $labels->take(2)->implode(' | ') . ' +' . ($labels->count() - 2);
+    }
+
+    private function firstOrCreateAlertaToken(array $payload): array
+    {
+        $existing = TerritorioToken::query()
+            ->where('eleccion_id', $payload['eleccion_id'])
+            ->where('dd', $payload['dd'])
+            ->where('mm', $payload['mm'])
+            ->where('modulo', 'comision_alertas')
+            ->where('zz', $payload['zz'])
+            ->first();
+
+        if ($existing) {
+            return [$existing, false];
+        }
+
+        $token = TerritorioToken::create([
+            'eleccion_id' => $payload['eleccion_id'],
+            'dd' => $payload['dd'],
+            'mm' => $payload['mm'],
+            'zz' => $payload['zz'],
+            'comuna' => $payload['comuna'],
+            'es_consulta' => $payload['es_consulta'],
+            'municipios' => $payload['municipios'],
+            'modulo' => $payload['modulo'],
+            'token' => Str::random(32),
+            'responsable' => $payload['responsable'],
+            'activo' => true,
+            'expires_at' => null,
+        ]);
+
+        return [$token, true];
     }
 }

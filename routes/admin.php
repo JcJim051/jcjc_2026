@@ -164,6 +164,7 @@ Route::get('territorio-tokens', [TerritorioTokensController::class, 'index'])->n
 Route::get('territorio-tokens/export', [TerritorioTokensController::class, 'export'])->name('admin.territorio_tokens.export');
 Route::post('territorio-tokens', [TerritorioTokensController::class, 'store'])->name('admin.territorio_tokens.store');
 Route::post('territorio-tokens/bloquear-todos', [TerritorioTokensController::class, 'bloquearTodos'])->name('admin.territorio_tokens.bloquear_todos');
+Route::post('territorio-tokens/generar-alertas-masivo', [TerritorioTokensController::class, 'generarAlertasMasivo'])->name('admin.territorio_tokens.generar_alertas_masivo');
 Route::get('territorio-tokens/municipios', [TerritorioTokensController::class, 'municipios'])->name('admin.territorio_tokens.municipios');
 Route::get('territorio-tokens/comunas', [TerritorioTokensController::class, 'comunas'])->name('admin.territorio_tokens.comunas');
 Route::get('territorio-tokens/zonas', [TerritorioTokensController::class, 'zonas'])->name('admin.territorio_tokens.zonas');

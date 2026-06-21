@@ -109,6 +109,11 @@
         <div class="card-header">
             <h3 class="card-title">Tokens existentes</h3>
             <div class="card-tools d-flex" style="gap:8px;">
+                <form action="{{ route('admin.territorio_tokens.generar_alertas_masivo') }}" method="POST" onsubmit="return confirm('¿Generar masivamente un link por cada zona y uno total por municipio para la eleccion seleccionada?');">
+                    @csrf
+                    <input type="hidden" name="eleccion_id" value="{{ $eleccionId ?? '' }}">
+                    <button type="submit" class="btn btn-sm btn-outline-info">Generar alertas masivo</button>
+                </form>
                 <form action="{{ route('admin.territorio_tokens.bloquear_todos') }}" method="POST" onsubmit="return confirm('¿Bloquear todos los tokens de la eleccion seleccionada?');">
                     @csrf
                     <input type="hidden" name="eleccion_id" value="{{ $eleccionId ?? '' }}">
