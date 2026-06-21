@@ -52,29 +52,6 @@
         </form>
     </div>
 </div>
-<div class="card soft-card mb-3">
-    <div class="card-header">Foto del E14</div>
-    <div class="card-body">
-        @if(empty($reporte) || empty($reporte->e14_reportado_at))
-            <div class="alert alert-warning mb-0">Primero envía los datos del E14. Apenas queden guardados, aquí podrás subir la foto por separado.</div>
-        @else
-            <form method="POST" action="{{ route('public.coordinador_reportes.e14_foto', [$token->token, $mesa->mesa_id]) }}" enctype="multipart/form-data">
-                @csrf
-                <div class="form-group">
-                    <label>Cargar foto del acta</label>
-                    <input type="file" name="e14_foto" class="form-control-file" accept="image/jpeg,image/png,image/webp" required>
-                    <small class="form-text text-muted">Formatos permitidos: JPG, JPEG, PNG y WEBP. Tamaño máximo: 8 MB. Si vienes desde iPhone y la foto está en HEIC/HEIF, envíala por WhatsApp como imagen, descárgala y luego súbela aquí. No la envíes como documento.</small>
-                    @if(!empty($reporte->e14_foto_path))
-                        <div class="mt-2">
-                            <a href="{{ asset('storage/' . $reporte->e14_foto_path) }}" target="_blank">Ver foto actual del E14</a>
-                        </div>
-                    @endif
-                </div>
-                <button class="btn btn-outline-primary btn-block" type="submit">Subir foto del E14</button>
-            </form>
-        @endif
-    </div>
-</div>
 <div class="card soft-card">
     <div class="card-header">Control final de la mesa</div>
     <div class="card-body">
@@ -97,6 +74,31 @@
                     <div class="form-group"><label>Comentario del testigo sobre la reclamación</label><textarea name="reclamacion_comentario" class="form-control" rows="3">{{ old('reclamacion_comentario', $reporte->reclamacion_comentario ?? '') }}</textarea></div>
                 </div>
                 <button class="btn btn-primary" type="submit">Guardar control final</button>
+            </form>
+        @endif
+    </div>
+</div>
+<div class="card soft-card mt-3">
+    <div class="card-header">Foto del E14</div>
+    <div class="card-body">
+        @if(empty($reporte) || empty($reporte->e14_reportado_at))
+            <div class="alert alert-warning mb-0">Primero envía los datos del E14 para habilitar la carga de la foto.</div>
+        @elseif(empty($reporte->control_final_at))
+            <div class="alert alert-warning mb-0">Primero completa el control final de la mesa. Después de eso podrás subir la foto del E14 como último paso.</div>
+        @else
+            <form method="POST" action="{{ route('public.coordinador_reportes.e14_foto', [$token->token, $mesa->mesa_id]) }}" enctype="multipart/form-data">
+                @csrf
+                <div class="form-group">
+                    <label>Cargar foto del acta</label>
+                    <input type="file" name="e14_foto" class="form-control-file" accept="image/jpeg,image/png,image/webp" required>
+                    <small class="form-text text-muted">Formatos permitidos: JPG, JPEG, PNG y WEBP. Tamaño máximo: 8 MB. Si vienes desde iPhone y la foto está en HEIC/HEIF, envíala por WhatsApp como imagen, descárgala y luego súbela aquí. No la envíes como documento.</small>
+                    @if(!empty($reporte->e14_foto_path))
+                        <div class="mt-2">
+                            <a href="{{ asset('storage/' . $reporte->e14_foto_path) }}" target="_blank">Ver foto actual del E14</a>
+                        </div>
+                    @endif
+                </div>
+                <button class="btn btn-outline-primary btn-block" type="submit">Subir foto del E14</button>
             </form>
         @endif
     </div>

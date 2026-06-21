@@ -267,6 +267,10 @@ class PublicCoordinadorReporteController extends Controller
             return back()->withErrors(['e14_foto' => 'Primero debes guardar los datos E14 antes de subir la foto.']);
         }
 
+        if (!$reporte->control_final_at) {
+            return back()->withErrors(['e14_foto' => 'Primero debes completar el control final de la mesa antes de subir la foto del E14.']);
+        }
+
         $data = $request->validate([
             'e14_foto' => ['required', 'file', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
         ], $this->publicImageMessages('foto del E14'));
