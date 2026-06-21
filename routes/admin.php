@@ -206,6 +206,8 @@ Route::middleware('can:dashboard-operativo-ver')->group(function () {
     Route::get('mesa-reportes/dashboard', [MesaReporteDashboardController::class, 'index'])->name('admin.mesa_reportes.dashboard');
     Route::get('mesa-reportes/afluencia', [MesaReporteDashboardController::class, 'afluencia'])->name('admin.mesa_reportes.afluencia');
     Route::get('mesa-reportes/e14', [MesaReporteDashboardController::class, 'e14'])->name('admin.mesa_reportes.e14');
+    Route::get('mesa-reportes/mesas', [MesaReporteDashboardController::class, 'mesas'])->name('admin.mesa_reportes.mesas');
+    Route::get('mesa-reportes/mesas/{mesa}', [MesaReporteDashboardController::class, 'showMesa'])->name('admin.mesa_reportes.mesas.show');
 });
 
 Route::middleware('can:dashboard-operativo-gestionar')->group(function () {
@@ -213,4 +215,9 @@ Route::middleware('can:dashboard-operativo-gestionar')->group(function () {
     Route::get('mesa-reportes/afluencia/export-comunas', [MesaReporteDashboardController::class, 'exportAfluenciaComunas'])->name('admin.mesa_reportes.afluencia.export_comunas');
     Route::get('mesa-reportes/afluencia/export-puestos', [MesaReporteDashboardController::class, 'exportAfluenciaPuestos'])->name('admin.mesa_reportes.afluencia.export_puestos');
     Route::get('mesa-reportes/afluencia/export-mesas', [MesaReporteDashboardController::class, 'exportAfluenciaMesas'])->name('admin.mesa_reportes.afluencia.export_mesas');
+    Route::get('mesa-reportes/afluencia/export-testigos-puestos', [MesaReporteDashboardController::class, 'exportAfluenciaTestigosPuestos'])->name('admin.mesa_reportes.afluencia.export_testigos_puestos');
+    Route::get('mesa-reportes/e14/export-comunas', [MesaReporteDashboardController::class, 'exportE14Comunas'])->name('admin.mesa_reportes.e14.export_comunas');
+    Route::get('mesa-reportes/e14/export-puestos', [MesaReporteDashboardController::class, 'exportE14Puestos'])->name('admin.mesa_reportes.e14.export_puestos');
+    Route::get('mesa-reportes/e14/export-mesas', [MesaReporteDashboardController::class, 'exportE14Mesas'])->name('admin.mesa_reportes.e14.export_mesas');
+    Route::get('mesa-reportes/mesas/export', [MesaReporteDashboardController::class, 'exportMesasAlertas'])->name('admin.mesa_reportes.mesas.export');
 });

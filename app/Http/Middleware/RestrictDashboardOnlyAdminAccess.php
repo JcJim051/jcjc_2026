@@ -21,6 +21,8 @@ class RestrictDashboardOnlyAdminAccess
             'admin.mesa_reportes.dashboard',
             'admin.mesa_reportes.afluencia',
             'admin.mesa_reportes.e14',
+            'admin.mesa_reportes.mesas',
+            'admin.mesa_reportes.mesas.show',
         ];
 
         $routeName = optional($request->route())->getName();

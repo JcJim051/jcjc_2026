@@ -353,6 +353,13 @@ return [
             'label_color' => 'warning',
             'can'  => 'dashboard-operativo-ver',
         ],
+        [
+            'text'        => 'Alertas por mesa',
+            'route'       => 'admin.mesa_reportes.mesas',
+            'icon'        => 'fas fa-exclamation-triangle',
+            'label_color' => 'danger',
+            'can'         => 'dashboard-operativo-ver',
+        ],
         [   'text'        => 'Asistencia de testigos',
             'route'         => 'admin.asistencia.index',
             'icon'        => 'fas fa-user-lock',

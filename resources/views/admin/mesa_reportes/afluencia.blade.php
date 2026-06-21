@@ -1,7 +1,7 @@
 @extends('adminlte::page')
 @section('title', 'Indicadores de Afluencia')
 @section('content_header')
-<div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;"><div><h1 class="mb-1">Indicadores de Afluencia</h1>@if($eleccionOperativa)<div class="text-muted">Elección operativa: <strong>{{ $eleccionOperativa->nombre }}</strong></div>@endif</div><div class="d-flex" style="gap:8px;"><a href="{{ route('admin.mesa_reportes.dashboard', ['eleccion_id' => $eleccionId]) }}" class="btn btn-outline-primary btn-sm">Dashboard</a><a href="{{ route('admin.mesa_reportes.afluencia', ['eleccion_id' => $eleccionId]) }}" class="btn btn-outline-primary btn-sm">Afluencia</a><a href="{{ route('admin.mesa_reportes.e14', ['eleccion_id' => $eleccionId]) }}" class="btn btn-outline-primary btn-sm">E14</a></div></div>
+<div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;"><div><h1 class="mb-1">Indicadores de Afluencia</h1>@if($eleccionOperativa)<div class="text-muted">Elección operativa: <strong>{{ $eleccionOperativa->nombre }}</strong></div>@endif</div><div class="d-flex" style="gap:8px;"><a href="{{ route('admin.mesa_reportes.dashboard', ['eleccion_id' => $eleccionId]) }}" class="btn btn-outline-primary btn-sm">Dashboard</a><a href="{{ route('admin.mesa_reportes.afluencia', ['eleccion_id' => $eleccionId]) }}" class="btn btn-outline-primary btn-sm">Afluencia</a><a href="{{ route('admin.mesa_reportes.e14', ['eleccion_id' => $eleccionId]) }}" class="btn btn-outline-primary btn-sm">E14</a><a href="{{ route('admin.mesa_reportes.mesas', ['eleccion_id' => $eleccionId]) }}" class="btn btn-outline-primary btn-sm">Alertas</a></div></div>
 @stop
 @section('content')
 @include('admin.mesa_reportes.partials.filters')
@@ -10,6 +10,7 @@
 @endcan
 @include('admin.mesa_reportes.partials.kpis')
 <div class="row mb-3"><div class="col-md-3"><div class="info-box"><span class="info-box-icon bg-success"><i class="fas fa-users"></i></span><div class="info-box-content"><span class="info-box-text">Personas 9:00</span><span class="info-box-number">{{ number_format($kpis['personas_afluencia_9']) }}</span><small>Mesas con reporte: {{ $kpis['mesas_afluencia_9'] }}</small></div></div></div><div class="col-md-3"><div class="info-box"><span class="info-box-icon bg-info"><i class="fas fa-users"></i></span><div class="info-box-content"><span class="info-box-text">Personas 11:00</span><span class="info-box-number">{{ number_format($kpis['personas_afluencia_11']) }}</span><small>Mesas con reporte: {{ $kpis['mesas_afluencia_11'] }}</small></div></div></div><div class="col-md-3"><div class="info-box"><span class="info-box-icon bg-primary"><i class="fas fa-users"></i></span><div class="info-box-content"><span class="info-box-text">Personas 2:00</span><span class="info-box-number">{{ number_format($kpis['personas_afluencia_14']) }}</span><small>Mesas con reporte: {{ $kpis['mesas_afluencia_14'] }}</small></div></div></div><div class="col-md-3"><div class="info-box"><span class="info-box-icon bg-warning"><i class="fas fa-layer-group"></i></span><div class="info-box-content"><span class="info-box-text">Total personas</span><span class="info-box-number">{{ number_format($kpis['personas_afluencia_total']) }}</span><small>3 cortes completos: {{ $kpis['mesas_afluencia_completa'] }}</small></div></div></div></div>
+<div class="row mb-3"><div class="col-md-4"><div class="info-box"><span class="info-box-icon bg-gradient-dark"><i class="fas fa-user-check"></i></span><div class="info-box-content"><span class="info-box-text">Total testigos presentes</span><span class="info-box-number">{{ number_format($kpis['total_testigos_presentes']) }}</span><small>Suma reportada por mesas</small></div></div></div></div>
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -47,9 +48,11 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;">
         <h3 class="card-title mb-0">Mapa de calor por comuna</h3>
+        @can('dashboard-operativo-gestionar')
         <a href="{{ route('admin.mesa_reportes.afluencia.export_comunas', ['eleccion_id' => $eleccionId, 'municipio' => $filtroMunicipio, 'puesto_id' => $filtroPuestoId, 'coordinador_id' => $filtroCoordinadorId]) }}" class="btn btn-success btn-sm">
             Descargar Excel
         </a>
+        @endcan
     </div>
     <div class="card-body table-responsive">
         <table id="afluenciaHeatTable" class="table table-bordered table-sm display nowrap mb-0" style="width:100%">
@@ -84,10 +87,46 @@
 </div>
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;">
+        <h3 class="card-title mb-0">Testigos presentes por puesto</h3>
+        @can('dashboard-operativo-gestionar')
+        <a href="{{ route('admin.mesa_reportes.afluencia.export_testigos_puestos', ['eleccion_id' => $eleccionId, 'municipio' => $filtroMunicipio, 'puesto_id' => $filtroPuestoId, 'coordinador_id' => $filtroCoordinadorId]) }}" class="btn btn-success btn-sm">
+            Descargar Excel
+        </a>
+        @endcan
+    </div>
+    <div class="card-body table-responsive">
+        <table id="testigosPuestosTable" class="table table-bordered table-sm display nowrap mb-0" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Municipio</th>
+                    <th>Comuna</th>
+                    <th>Puesto</th>
+                    <th>Mesas total</th>
+                    <th>Testigos presentes</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($resumenPuestoTestigos as $row)
+                    <tr>
+                        <td>{{ $row['municipio'] }}</td>
+                        <td>{{ $row['comuna'] }}</td>
+                        <td>{{ $row['puesto'] }}</td>
+                        <td>{{ $row['mesas_total'] }}</td>
+                        <td class="font-weight-bold">{{ number_format($row['testigos_presentes']) }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;">
         <h3 class="card-title mb-0">Detalle por puesto</h3>
+        @can('dashboard-operativo-gestionar')
         <a href="{{ route('admin.mesa_reportes.afluencia.export_puestos', ['eleccion_id' => $eleccionId, 'municipio' => $filtroMunicipio, 'puesto_id' => $filtroPuestoId, 'coordinador_id' => $filtroCoordinadorId]) }}" class="btn btn-success btn-sm">
             Descargar Excel
         </a>
+        @endcan
     </div>
     <div class="card-body table-responsive">
         <table id="afluenciaPuestosTable" class="table table-bordered table-sm display nowrap mb-0" style="width:100%">
@@ -131,9 +170,11 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;">
         <h3 class="card-title mb-0">Detalle por mesa</h3>
+        @can('dashboard-operativo-gestionar')
         <a href="{{ route('admin.mesa_reportes.afluencia.export_mesas', ['eleccion_id' => $eleccionId, 'municipio' => $filtroMunicipio, 'puesto_id' => $filtroPuestoId, 'coordinador_id' => $filtroCoordinadorId]) }}" class="btn btn-success btn-sm">
             Descargar Excel
         </a>
+        @endcan
     </div>
     <div class="card-body table-responsive">
         <table id="afluenciaMesasTable" class="table table-bordered table-sm display nowrap mb-0" style="width:100%">
@@ -243,6 +284,16 @@
     });
 
     $('#afluenciaPuestosTable').DataTable({
+        responsive: true,
+        scrollX: true,
+        pageLength: 25,
+        order: [[0, 'asc'], [1, 'asc'], [2, 'asc']],
+        language: {
+            url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'
+        }
+    });
+
+    $('#testigosPuestosTable').DataTable({
         responsive: true,
         scrollX: true,
         pageLength: 25,

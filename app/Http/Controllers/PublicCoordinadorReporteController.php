@@ -182,6 +182,7 @@ class PublicCoordinadorReporteController extends Controller
             'afluencia_9' => ['nullable', 'integer', 'min:0'],
             'afluencia_11' => ['nullable', 'integer', 'min:0'],
             'afluencia_14' => ['nullable', 'integer', 'min:0'],
+            'testigos_presentes' => ['nullable', 'integer', 'min:0'],
         ]);
 
         DB::transaction(function () use ($data, $mesaRow, $tokenRow, $auth) {
@@ -199,6 +200,7 @@ class PublicCoordinadorReporteController extends Controller
                 'afluencia_9' => $data['afluencia_9'] ?? null,
                 'afluencia_11' => $data['afluencia_11'] ?? null,
                 'afluencia_14' => $data['afluencia_14'] ?? null,
+                'testigos_presentes' => $data['testigos_presentes'] ?? null,
                 'created_by_abogado_id' => $reporte->created_by_abogado_id ?: $auth['abogado_id'],
                 'updated_by_abogado_id' => $auth['abogado_id'],
             ]);
