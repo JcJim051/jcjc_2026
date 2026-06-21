@@ -69,6 +69,16 @@
                 </div>
 
                 <div class="row">
+                    <div class="col-sm-3"><div class="custom-control custom-switch mt-2"><input type="checkbox" class="custom-control-input" id="crear_habilitar_afluencia" name="habilitar_afluencia" value="1" checked><label class="custom-control-label" for="crear_habilitar_afluencia">Afluencia</label></div></div>
+                    <div class="col-sm-3"><div class="custom-control custom-switch mt-2"><input type="checkbox" class="custom-control-input" id="crear_habilitar_datos_e14" name="habilitar_datos_e14" value="1" checked><label class="custom-control-label" for="crear_habilitar_datos_e14">Datos E14</label></div></div>
+                    <div class="col-sm-3"><div class="custom-control custom-switch mt-2"><input type="checkbox" class="custom-control-input" id="crear_habilitar_informacion_final" name="habilitar_informacion_final" value="1" checked><label class="custom-control-label" for="crear_habilitar_informacion_final">Información final</label></div></div>
+                    <div class="col-sm-3"><div class="custom-control custom-switch mt-2"><input type="checkbox" class="custom-control-input" id="crear_habilitar_foto_e14" name="habilitar_foto_e14" value="1" checked><label class="custom-control-label" for="crear_habilitar_foto_e14">Foto</label></div></div>
+                </div>
+
+                <div class="row">
+                </div>
+
+                <div class="row">
                     <div class="col-sm-3">
                         <div class="form-group">
                             <label for="alcance_tipo">Alcance</label>
@@ -125,6 +135,7 @@
                         <th>Fecha</th>
                         <th>Estado</th>
                         <th>Meta %</th>
+                        <th>Flujo</th>
                         <th>Alcance</th>
                         <th>Importar DIVIPOL</th>
                         <th>Editar</th>
@@ -139,6 +150,14 @@
                             <td>{{ $e->fecha }}</td>
                             <td>{{ $e->estado }}</td>
                             <td>{{ $e->meta_testigos_pct ?? 100 }}%</td>
+                            <td>
+                                <small>
+                                    A: {{ $e->habilitar_afluencia ? 'On' : 'Off' }} |
+                                    E14: {{ $e->habilitar_datos_e14 ? 'On' : 'Off' }} |
+                                    Final: {{ $e->habilitar_informacion_final ? 'On' : 'Off' }} |
+                                    Foto: {{ $e->habilitar_foto_e14 ? 'On' : 'Off' }}
+                                </small>
+                            </td>
                             <td>
                                 {{ $e->alcance_tipo ?? 'sin' }}
                                 @if($e->alcance_dd)
@@ -179,6 +198,12 @@
                                     </div>
                                     <div class="mb-2">
                                         <input type="number" name="meta_testigos_pct" class="form-control form-control-sm" min="0" max="100" value="{{ $e->meta_testigos_pct }}" placeholder="100">
+                                    </div>
+                                    <div class="mb-2 border rounded p-2">
+                                        <div class="custom-control custom-switch"><input type="checkbox" class="custom-control-input" id="afluencia_{{ $e->id }}" name="habilitar_afluencia" value="1" {{ $e->habilitar_afluencia ? 'checked' : '' }}><label class="custom-control-label" for="afluencia_{{ $e->id }}">Afluencia</label></div>
+                                        <div class="custom-control custom-switch"><input type="checkbox" class="custom-control-input" id="datos_{{ $e->id }}" name="habilitar_datos_e14" value="1" {{ $e->habilitar_datos_e14 ? 'checked' : '' }}><label class="custom-control-label" for="datos_{{ $e->id }}">Datos E14</label></div>
+                                        <div class="custom-control custom-switch"><input type="checkbox" class="custom-control-input" id="final_{{ $e->id }}" name="habilitar_informacion_final" value="1" {{ $e->habilitar_informacion_final ? 'checked' : '' }}><label class="custom-control-label" for="final_{{ $e->id }}">Información final</label></div>
+                                        <div class="custom-control custom-switch"><input type="checkbox" class="custom-control-input" id="foto_{{ $e->id }}" name="habilitar_foto_e14" value="1" {{ $e->habilitar_foto_e14 ? 'checked' : '' }}><label class="custom-control-label" for="foto_{{ $e->id }}">Foto</label></div>
                                     </div>
                                     <div class="mb-2">
                                         <select name="alcance_tipo" class="form-control form-control-sm">

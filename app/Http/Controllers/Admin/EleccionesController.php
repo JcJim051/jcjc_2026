@@ -28,6 +28,10 @@ class EleccionesController extends Controller
             'fecha' => 'nullable|date',
             'estado' => 'required|string|max:50',
             'meta_testigos_pct' => 'nullable|integer|min:0|max:100',
+            'habilitar_afluencia' => 'nullable|boolean',
+            'habilitar_datos_e14' => 'nullable|boolean',
+            'habilitar_informacion_final' => 'nullable|boolean',
+            'habilitar_foto_e14' => 'nullable|boolean',
             'alcance_tipo' => 'nullable|string|max:50',
             'alcance_dd' => 'nullable|string|max:2',
             'alcance_mm' => 'nullable|string|max:255',
@@ -45,6 +49,10 @@ class EleccionesController extends Controller
             'alcance_dd' => $alcanceDd,
             'alcance_mm' => $alcanceMm,
             'meta_testigos_pct' => $data['meta_testigos_pct'] ?? null,
+            'habilitar_afluencia' => $request->boolean('habilitar_afluencia', true),
+            'habilitar_datos_e14' => $request->boolean('habilitar_datos_e14', true),
+            'habilitar_informacion_final' => $request->boolean('habilitar_informacion_final', true),
+            'habilitar_foto_e14' => $request->boolean('habilitar_foto_e14', true),
         ]);
 
         if ($request->hasFile('divipol')) {
@@ -176,6 +184,10 @@ class EleccionesController extends Controller
             'fecha' => 'nullable|date',
             'estado' => 'required|string|max:50',
             'meta_testigos_pct' => 'nullable|integer|min:0|max:100',
+            'habilitar_afluencia' => 'nullable|boolean',
+            'habilitar_datos_e14' => 'nullable|boolean',
+            'habilitar_informacion_final' => 'nullable|boolean',
+            'habilitar_foto_e14' => 'nullable|boolean',
             'alcance_tipo' => 'nullable|string|max:50',
             'alcance_dd' => 'nullable|string|max:2',
             'alcance_mm' => 'nullable|string|max:255',
@@ -192,6 +204,10 @@ class EleccionesController extends Controller
             'alcance_dd' => $alcanceDd,
             'alcance_mm' => $alcanceMm,
             'meta_testigos_pct' => $data['meta_testigos_pct'] ?? null,
+            'habilitar_afluencia' => $request->boolean('habilitar_afluencia', true),
+            'habilitar_datos_e14' => $request->boolean('habilitar_datos_e14', true),
+            'habilitar_informacion_final' => $request->boolean('habilitar_informacion_final', true),
+            'habilitar_foto_e14' => $request->boolean('habilitar_foto_e14', true),
         ]);
 
         return redirect()->route('admin.elecciones.index')

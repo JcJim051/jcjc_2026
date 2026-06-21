@@ -12,6 +12,29 @@ class MesaReporteDashboardController extends Controller
 {
     use EleccionScope;
 
+    public function updateSteps(Request $request)
+    {
+        $eleccionId = $this->resolveEleccionId((int) $request->get('eleccion_id'));
+        $eleccion = Eleccion::findOrFail($eleccionId);
+
+        $data = $request->validate([
+            'eleccion_id' => ['required', 'integer', 'exists:elecciones,id'],
+            'habilitar_afluencia' => ['nullable', 'boolean'],
+            'habilitar_datos_e14' => ['nullable', 'boolean'],
+            'habilitar_informacion_final' => ['nullable', 'boolean'],
+            'habilitar_foto_e14' => ['nullable', 'boolean'],
+        ]);
+
+        $eleccion->update([
+            'habilitar_afluencia' => $request->boolean('habilitar_afluencia'),
+            'habilitar_datos_e14' => $request->boolean('habilitar_datos_e14'),
+            'habilitar_informacion_final' => $request->boolean('habilitar_informacion_final'),
+            'habilitar_foto_e14' => $request->boolean('habilitar_foto_e14'),
+        ]);
+
+        return back()->with('success', 'Visibilidad de pasos actualizada correctamente.');
+    }
+
     public function index(Request $request)
     {
         $data = $this->buildDashboardData($request);
@@ -60,7 +83,7 @@ class MesaReporteDashboardController extends Controller
         }
 
         $rows = (clone $base)->get([
-            'em.id as mesa_id', 'em.mesa_num', 'ep.id as puesto_id', 'ep.municipio', 'ep.puesto',
+            'em.id as mesa_id', 'em.mesa_num', 'ep.id as puesto_id', 'ep.municipio', 'ep.comuna', 'ep.puesto',
             'mr.id as reporte_id', 'mr.afluencia_9', 'mr.afluencia_11', 'mr.afluencia_14', 'mr.e14_reportado_at',
             'mr.control_final_at', 'mr.reconteo', 'mr.reclamacion', 'mr.reclamacion_origen', 'mr.reclamacion_foto_path',
             'mr.jurados_firmaron', 'a.nombre as coordinador_nombre', 'mr.abogado_id as coordinador_id',
@@ -70,6 +93,9 @@ class MesaReporteDashboardController extends Controller
         $mesasAfluencia9 = $rows->whereNotNull('afluencia_9')->count();
         $mesasAfluencia11 = $rows->whereNotNull('afluencia_11')->count();
         $mesasAfluencia14 = $rows->whereNotNull('afluencia_14')->count();
+        $personasAfluencia9 = (int) $rows->sum(fn ($r) => (int) ($r->afluencia_9 ?? 0));
+        $personasAfluencia11 = (int) $rows->sum(fn ($r) => (int) ($r->afluencia_11 ?? 0));
+        $personasAfluencia14 = (int) $rows->sum(fn ($r) => (int) ($r->afluencia_14 ?? 0));
         $mesasAfluencia = $rows->filter(fn ($r) => !is_null($r->afluencia_9) || !is_null($r->afluencia_11) || !is_null($r->afluencia_14))->count();
         $mesasAfluenciaCompleta = $rows->filter(fn ($r) => !is_null($r->afluencia_9) && !is_null($r->afluencia_11) && !is_null($r->afluencia_14))->count();
         $mesasE14 = $rows->whereNotNull('e14_reportado_at')->count();
@@ -87,6 +113,9 @@ class MesaReporteDashboardController extends Controller
             $afluencia = $group->filter(fn ($r) => !is_null($r->afluencia_9) || !is_null($r->afluencia_11) || !is_null($r->afluencia_14))->count();
             $e14 = $group->whereNotNull('e14_reportado_at')->count();
             $control = $group->whereNotNull('control_final_at')->count();
+            $personas9 = (int) $group->sum(fn ($r) => (int) ($r->afluencia_9 ?? 0));
+            $personas11 = (int) $group->sum(fn ($r) => (int) ($r->afluencia_11 ?? 0));
+            $personas14 = (int) $group->sum(fn ($r) => (int) ($r->afluencia_14 ?? 0));
             return [
                 'municipio' => $key,
                 'mesas_total' => $total,
@@ -95,6 +124,10 @@ class MesaReporteDashboardController extends Controller
                 'control' => $control,
                 'reclamaciones' => $group->where('reclamacion', 1)->count(),
                 'reconteos' => $group->where('reconteo', 1)->count(),
+                'personas_9' => $personas9,
+                'personas_11' => $personas11,
+                'personas_14' => $personas14,
+                'personas_total' => $personas9 + $personas11 + $personas14,
             ];
         })->sortKeys()->values();
 
@@ -123,6 +156,32 @@ class MesaReporteDashboardController extends Controller
             ];
         })->sortBy('coordinador')->values();
 
+        $resumenComunaAfluencia = $rows
+            ->groupBy(function ($row) {
+                $municipio = trim((string) ($row->municipio ?? 'N/D'));
+                $comuna = trim((string) ($row->comuna ?? 'SIN COMUNA'));
+                return $municipio . '||' . ($comuna !== '' ? $comuna : 'SIN COMUNA');
+            })
+            ->map(function ($group, $key) {
+                $first = $group->first();
+                $personas9 = (int) $group->sum(fn ($row) => (int) ($row->afluencia_9 ?? 0));
+                $personas11 = (int) $group->sum(fn ($row) => (int) ($row->afluencia_11 ?? 0));
+                $personas14 = (int) $group->sum(fn ($row) => (int) ($row->afluencia_14 ?? 0));
+
+                return [
+                    'municipio' => (string) ($first->municipio ?? 'N/D'),
+                    'comuna' => trim((string) ($first->comuna ?? '')) !== '' ? (string) $first->comuna : 'SIN COMUNA',
+                    'mesas_total' => $group->count(),
+                    'mesas_con_reporte' => $group->filter(fn ($row) => !is_null($row->afluencia_9) || !is_null($row->afluencia_11) || !is_null($row->afluencia_14))->count(),
+                    'personas_9' => $personas9,
+                    'personas_11' => $personas11,
+                    'personas_14' => $personas14,
+                    'personas_total' => $personas9 + $personas11 + $personas14,
+                ];
+            })
+            ->sortBy([['municipio', 'asc'], ['comuna', 'asc']])
+            ->values();
+
         $filtros = [
             'municipios' => (clone $base)->select('ep.municipio')->distinct()->orderBy('ep.municipio')->pluck('ep.municipio'),
             'puestos' => (clone $base)->select('ep.id', 'ep.puesto', 'ep.municipio')->distinct()->orderBy('ep.municipio')->orderBy('ep.puesto')->get(),
@@ -137,6 +196,14 @@ class MesaReporteDashboardController extends Controller
             'coordinadores_sin_actividad' => $coordinadoresSinActividad,
         ];
 
+        $chartVillavicencio = $resumenComunaAfluencia
+            ->filter(fn ($row) => trim((string) ($row['municipio'] ?? '')) === 'VILLAVICENCIO')
+            ->values();
+
+        $chartMunicipios = $resumenMunicipio
+            ->filter(fn ($row) => trim((string) ($row['municipio'] ?? '')) !== 'VILLAVICENCIO')
+            ->values();
+
         return [
             'eleccionId' => $eleccionId,
             'eleccionOperativa' => $eleccionOperativa,
@@ -149,6 +216,15 @@ class MesaReporteDashboardController extends Controller
             'resumenCoordinador' => $resumenCoordinador,
             'rezagos' => $rezagos,
             'rows' => $rows,
+            'resumenComunaAfluencia' => $resumenComunaAfluencia,
+            'chartVillavicencio' => $chartVillavicencio,
+            'chartMunicipios' => $chartMunicipios,
+            'flujoConfig' => [
+                'afluencia' => $eleccionOperativa ? (bool) $eleccionOperativa->habilitar_afluencia : true,
+                'datos_e14' => $eleccionOperativa ? (bool) $eleccionOperativa->habilitar_datos_e14 : true,
+                'informacion_final' => $eleccionOperativa ? (bool) $eleccionOperativa->habilitar_informacion_final : true,
+                'foto' => $eleccionOperativa ? (bool) $eleccionOperativa->habilitar_foto_e14 : true,
+            ],
             'kpis' => [
                 'puestos_con_coordinador' => $puestosConCoordinador,
                 'total_mesas' => $totalMesas,
@@ -157,6 +233,10 @@ class MesaReporteDashboardController extends Controller
                 'mesas_afluencia_11' => $mesasAfluencia11,
                 'mesas_afluencia_14' => $mesasAfluencia14,
                 'mesas_afluencia_completa' => $mesasAfluenciaCompleta,
+                'personas_afluencia_9' => $personasAfluencia9,
+                'personas_afluencia_11' => $personasAfluencia11,
+                'personas_afluencia_14' => $personasAfluencia14,
+                'personas_afluencia_total' => $personasAfluencia9 + $personasAfluencia11 + $personasAfluencia14,
                 'mesas_e14' => $mesasE14,
                 'mesas_control' => $mesasControl,
                 'mesas_reconteo' => $mesasReconteo,

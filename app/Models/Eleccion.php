@@ -20,9 +20,17 @@ class Eleccion extends Model
         'alcance_dd',
         'alcance_mm',
         'meta_testigos_pct',
+        'habilitar_afluencia',
+        'habilitar_datos_e14',
+        'habilitar_informacion_final',
+        'habilitar_foto_e14',
     ];
 
     protected $casts = [
         'meta_testigos_pct' => 'integer',
+        'habilitar_afluencia' => 'boolean',
+        'habilitar_datos_e14' => 'boolean',
+        'habilitar_informacion_final' => 'boolean',
+        'habilitar_foto_e14' => 'boolean',
     ];
 }

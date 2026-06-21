@@ -7,9 +7,12 @@
     <div><strong>Coordinador:</strong> {{ $abogado->nombre ?? 'N/D' }}</div>
     <div class="d-flex flex-wrap" style="gap:8px;">
         <a href="{{ route('public.coordinador_reportes.puesto', $token->token) }}" class="btn btn-outline-primary">Volver a mesas</a>
-        <a href="{{ route('public.coordinador_reportes.mesa_afluencia', [$token->token, $mesa->mesa_id]) }}" class="btn btn-primary">Ir a afluencia</a>
+        @if(!empty($flujo['afluencia']))
+            <a href="{{ route('public.coordinador_reportes.mesa_afluencia', [$token->token, $mesa->mesa_id]) }}" class="btn btn-primary">Ir a afluencia</a>
+        @endif
     </div>
 </div>
+@if(!empty($flujo['datos_e14']))
 <div class="card soft-card mb-3">
     <div class="card-header">Datos E14</div>
     <div class="card-body">
@@ -52,6 +55,8 @@
         </form>
     </div>
 </div>
+@endif
+@if(!empty($flujo['informacion_final']))
 <div class="card soft-card">
     <div class="card-header">Control final de la mesa</div>
     <div class="card-body">
@@ -78,12 +83,14 @@
         @endif
     </div>
 </div>
+@endif
+@if(!empty($flujo['foto']))
 <div class="card soft-card mt-3">
     <div class="card-header">Foto del E14</div>
     <div class="card-body">
         @if(empty($reporte) || empty($reporte->e14_reportado_at))
             <div class="alert alert-warning mb-0">Primero envía los datos del E14 para habilitar la carga de la foto.</div>
-        @elseif(empty($reporte->control_final_at))
+        @elseif(!empty($flujo['informacion_final']) && empty($reporte->control_final_at))
             <div class="alert alert-warning mb-0">Primero completa el control final de la mesa. Después de eso podrás subir la foto del E14 como último paso.</div>
         @else
             <form method="POST" action="{{ route('public.coordinador_reportes.e14_foto', [$token->token, $mesa->mesa_id]) }}" enctype="multipart/form-data">
@@ -103,6 +110,10 @@
         @endif
     </div>
 </div>
+@endif
+@if(empty($flujo['datos_e14']) && empty($flujo['informacion_final']) && empty($flujo['foto']))
+    <div class="alert alert-warning">Este link no tiene pasos activos en este momento.</div>
+@endif
 @endsection
 @push('scripts')
 <script>

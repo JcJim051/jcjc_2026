@@ -141,12 +141,20 @@ class PublicCoordinadorReporteController extends Controller
     {
         $context = $this->buildMesaViewContext($request, $token, $mesa);
 
+        if (!$context['flujo']['afluencia']) {
+            return redirect()->route('public.coordinador_reportes.puesto', $token)->with('error', 'El reporte de afluencia está apagado para esta elección.');
+        }
+
         return view('public.coordinador_reportes.mesa_afluencia', $context);
     }
 
     public function mesaE14(Request $request, string $token, int $mesa)
     {
         $context = $this->buildMesaViewContext($request, $token, $mesa);
+
+        if (!$context['flujo']['e14_link']) {
+            return redirect()->route('public.coordinador_reportes.puesto', $token)->with('error', 'Este flujo de reporte está apagado para esta elección.');
+        }
 
         return view('public.coordinador_reportes.mesa_e14', $context);
     }
@@ -156,6 +164,10 @@ class PublicCoordinadorReporteController extends Controller
         $tokenRow = $this->getReportTokenOrFail($token);
         $auth = $this->getSessionAuth($request, $tokenRow);
         $mesaRow = $this->getMesaAuthorized($tokenRow, $auth, $mesa);
+
+        if (!$this->stepConfig($tokenRow)['afluencia']) {
+            return back()->withErrors(['afluencia' => 'El reporte de afluencia está apagado para esta elección.']);
+        }
 
         $data = $request->validate([
             'afluencia_9' => ['nullable', 'integer', 'min:0'],
@@ -194,6 +206,11 @@ class PublicCoordinadorReporteController extends Controller
         $tokenRow = $this->getReportTokenOrFail($token);
         $auth = $this->getSessionAuth($request, $tokenRow);
         $mesaRow = $this->getMesaAuthorized($tokenRow, $auth, $mesa);
+
+        $steps = $this->stepConfig($tokenRow);
+        if (!$steps['datos_e14']) {
+            return back()->withErrors(['e14' => 'El reporte de datos E14 está apagado para esta elección.']);
+        }
 
         $candidatos = Candidato::query()
             ->where('eleccion_id', $tokenRow->eleccion_id)
@@ -253,7 +270,15 @@ class PublicCoordinadorReporteController extends Controller
             $this->logAudit($reporte, $auth['abogado_id'], $reporte->wasRecentlyCreated ? 'crear_e14' : 'actualizar_e14', $before, $reporte->fresh()->toArray());
         });
 
-        return back()->with('success', 'Datos E14 guardados correctamente. Ahora puedes subir la foto del acta.');
+        $steps = $this->stepConfig($tokenRow);
+        $message = 'Datos E14 guardados correctamente.';
+        if ($steps['informacion_final']) {
+            $message .= ' Ahora puedes continuar con la información final.';
+        } elseif ($steps['foto']) {
+            $message .= ' Ahora puedes subir la foto del acta.';
+        }
+
+        return back()->with('success', $message);
     }
 
     public function saveE14Foto(Request $request, string $token, int $mesa)
@@ -263,11 +288,16 @@ class PublicCoordinadorReporteController extends Controller
         $mesaRow = $this->getMesaAuthorized($tokenRow, $auth, $mesa);
         $reporte = MesaReporte::query()->where('eleccion_mesa_id', $mesaRow->mesa_id)->first();
 
+        $steps = $this->stepConfig($tokenRow);
+        if (!$steps['foto']) {
+            return back()->withErrors(['e14_foto' => 'La carga de foto está apagada para esta elección.']);
+        }
+
         if (!$reporte || !$reporte->e14_reportado_at) {
             return back()->withErrors(['e14_foto' => 'Primero debes guardar los datos E14 antes de subir la foto.']);
         }
 
-        if (!$reporte->control_final_at) {
+        if ($steps['informacion_final'] && !$reporte->control_final_at) {
             return back()->withErrors(['e14_foto' => 'Primero debes completar el control final de la mesa antes de subir la foto del E14.']);
         }
 
@@ -299,6 +329,11 @@ class PublicCoordinadorReporteController extends Controller
         $auth = $this->getSessionAuth($request, $tokenRow);
         $mesaRow = $this->getMesaAuthorized($tokenRow, $auth, $mesa);
         $reporte = MesaReporte::query()->where('eleccion_mesa_id', $mesaRow->mesa_id)->first();
+
+        $steps = $this->stepConfig($tokenRow);
+        if (!$steps['informacion_final']) {
+            return back()->withErrors(['control' => 'La información final está apagada para esta elección.']);
+        }
 
         if (!$reporte || !$reporte->e14_reportado_at) {
             return back()->withErrors(['control' => 'Primero debes guardar los datos E14 de esta mesa.']);
@@ -521,13 +556,35 @@ class PublicCoordinadorReporteController extends Controller
             ->orderBy('codigo')
             ->get();
 
+        $eleccion = Eleccion::find($tokenRow->eleccion_id);
+        $steps = $this->stepConfig($tokenRow, $eleccion);
+
         return [
             'token' => $tokenRow,
-            'eleccion' => Eleccion::find($tokenRow->eleccion_id),
+            'eleccion' => $eleccion,
             'abogado' => Abogado::find($auth['abogado_id']),
             'mesa' => $mesaRow,
             'reporte' => $reporte,
             'candidatos' => $candidatos,
+            'flujo' => [
+                'afluencia' => $steps['afluencia'],
+                'datos_e14' => $steps['datos_e14'],
+                'informacion_final' => $steps['informacion_final'] && $steps['datos_e14'],
+                'foto' => $steps['foto'] && $steps['datos_e14'],
+                'e14_link' => $steps['datos_e14'] || ($steps['informacion_final'] && $steps['datos_e14']) || ($steps['foto'] && $steps['datos_e14']),
+            ],
+        ];
+    }
+
+    private function stepConfig(TerritorioToken $tokenRow, ?Eleccion $eleccion = null): array
+    {
+        $eleccion = $eleccion ?: Eleccion::find($tokenRow->eleccion_id);
+
+        return [
+            'afluencia' => $eleccion ? (bool) $eleccion->habilitar_afluencia : true,
+            'datos_e14' => $eleccion ? (bool) $eleccion->habilitar_datos_e14 : true,
+            'informacion_final' => $eleccion ? (bool) $eleccion->habilitar_informacion_final : true,
+            'foto' => $eleccion ? (bool) $eleccion->habilitar_foto_e14 : true,
         ];
     }
 

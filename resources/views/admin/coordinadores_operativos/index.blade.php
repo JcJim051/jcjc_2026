@@ -225,6 +225,7 @@
             <div class="modal-content">
                 <form method="POST" action="{{ route('admin.coordinadores_operativos.store_manual') }}">
                     @csrf
+                    <input type="hidden" name="form_mode" value="create">
                     <input type="hidden" name="eleccion_id" value="{{ old('eleccion_id', $eleccionId) }}">
                     <div class="modal-header bg-primary">
                         <h5 class="modal-title">Crear coordinador y asignar puesto</h5>
@@ -251,18 +252,18 @@
                                 <input type="text" name="telefono" class="form-control" value="{{ old('telefono') }}">
                             </div>
                             <div class="col-md-6 form-group">
-                                <label>Puesto</label>
-                                <select name="codpuesto" class="form-control js-coord-puesto-select" required>
-                                    <option value="">Seleccione...</option>
+                                <label>Puestos</label>
+                                @php($oldCodpuestos = collect((array) old('codpuesto', []))->map(fn($item) => (string) $item)->all())
+                                <select name="codpuesto[]" id="createCodpuesto" class="form-control js-coord-puesto-select" multiple required>
                                     @foreach($puestoOptions as $option)
-                                        <option value="{{ $option->codpuesto }}" {{ old('codpuesto') === $option->codpuesto ? 'selected' : '' }}>
+                                        <option value="{{ $option->codpuesto }}" {{ in_array((string) $option->codpuesto, $oldCodpuestos, true) ? 'selected' : '' }}>
                                             {{ $option->label }} | Rem {{ $option->disponibles }} | Mesas {{ $option->mesa_libre }} | Sugiere {{ $option->tipo_sugerido }}
                                         </option>
                                     @endforeach
                                 </select>
                             </div>
                             <div class="col-md-4 form-group">
-                                <label>Tipo</label>
+                                <label>Tipo</label><small class="d-block text-muted" id="tipoAsignacionHelp">Si seleccionas varios puestos, la asignación será automática según disponibilidad.</small>
                                 <select name="tipo_asignacion" id="tipoAsignacion" class="form-control" required>
                                     <option value="remanente" {{ old('tipo_asignacion') === 'remanente' ? 'selected' : '' }}>Rem</option>
                                     <option value="mesa" {{ old('tipo_asignacion') === 'mesa' ? 'selected' : '' }}>Mesa</option>
@@ -299,6 +300,8 @@
                 <form method="POST" id="formEditarCoordinador">
                     @csrf
                     @method('PUT')
+                    <input type="hidden" name="form_mode" value="edit">
+                    <input type="hidden" name="editing_coord_id" id="editingCoordId" value="">
                     <input type="hidden" name="eleccion_id" value="{{ $eleccionId }}">
                     <div class="modal-header bg-primary">
                         <h5 class="modal-title">Editar coordinador</h5>
@@ -325,9 +328,8 @@
                                 <input type="text" name="telefono" id="editTelefono" class="form-control">
                             </div>
                             <div class="col-md-6 form-group">
-                                <label>Puesto</label>
-                                <select name="codpuesto" id="editCodpuesto" class="form-control" required>
-                                    <option value="">Seleccione...</option>
+                                <label>Puestos</label>
+                                <select name="codpuesto[]" id="editCodpuesto" class="form-control" multiple required>
                                     @foreach($puestoOptions as $option)
                                         <option value="{{ $option->codpuesto }}">
                                             {{ $option->label }} | Rem {{ $option->disponibles }} | Mesas {{ $option->mesa_libre }} | Sugiere {{ $option->tipo_sugerido }}
@@ -336,7 +338,7 @@
                                 </select>
                             </div>
                             <div class="col-md-4 form-group">
-                                <label>Tipo</label>
+                                <label>Tipo</label><small class="d-block text-muted" id="editTipoAsignacionHelp">Si seleccionas varios puestos, la asignación será automática según disponibilidad.</small>
                                 <select name="tipo_asignacion" id="editTipoAsignacion" class="form-control" required>
                                     <option value="remanente">Rem</option>
                                     <option value="mesa">Mesa</option>
@@ -409,21 +411,56 @@
                 }
             });
 
-            $('.js-coord-puesto-select').select2({
+            $('#createCodpuesto').select2({
                 width: '100%',
-                placeholder: 'Buscar puesto...',
+                placeholder: 'Buscar puestos...',
                 dropdownParent: $('#modalCrearCoordinador')
             });
 
+            $('#editCodpuesto').select2({
+                width: '100%',
+                placeholder: 'Buscar puestos...',
+                dropdownParent: $('#modalEditarCoordinador')
+            });
+
+            function getSelectedCodpuestos(selector) {
+                const value = $(selector).val();
+                if (Array.isArray(value)) {
+                    return value.filter(Boolean);
+                }
+                return value ? [value] : [];
+            }
+
             function refreshAssignmentUi(config) {
-                const meta = puestosMeta[$(config.codpuesto).val()] || { rem_disponibles: 0, mesas_disponibles: [] };
+                const selectedCodpuestos = getSelectedCodpuestos(config.codpuesto);
+                const single = selectedCodpuestos.length === 1;
+                const meta = single ? (puestosMeta[selectedCodpuestos[0]] || { rem_disponibles: 0, mesas_disponibles: [] }) : { rem_disponibles: 0, mesas_disponibles: [] };
                 const tipo = $(config.tipo).val();
                 const $mesaWrap = $(config.mesaWrap);
                 const $mesaSelect = $(config.mesaSelect);
                 const $ayuda = $(config.ayuda);
+                const $tipo = $(config.tipo);
                 const selectedMesa = config.selectedMesa();
 
                 $mesaSelect.empty().append('<option value="">Seleccione una mesa...</option>');
+
+                if (!selectedCodpuestos.length) {
+                    $mesaWrap.hide();
+                    $mesaSelect.prop('required', false);
+                    $tipo.prop('disabled', false);
+                    $ayuda.text('Selecciona al menos un puesto.');
+                    return;
+                }
+
+                if (!single) {
+                    $mesaWrap.hide();
+                    $mesaSelect.prop('required', false);
+                    $tipo.prop('disabled', true);
+                    $ayuda.text('Se trabajarán ' + selectedCodpuestos.length + ' puestos. La asignación será automática según disponibilidad en cada uno.');
+                    return;
+                }
+
+                $tipo.prop('disabled', false);
 
                 if (tipo === 'remanente') {
                     $mesaWrap.hide();
@@ -452,9 +489,9 @@
                 $ayuda.text('Se asociará al puesto sin usar rem ni mesa.');
             }
 
-            $('select[name="codpuesto"], #tipoAsignacion').on('change', function () {
+            $('#createCodpuesto, #tipoAsignacion').on('change', function () {
                 refreshAssignmentUi({
-                    codpuesto: 'select[name="codpuesto"]',
+                    codpuesto: '#createCodpuesto',
                     tipo: '#tipoAsignacion',
                     mesaWrap: '#mesaDisponibleWrap',
                     mesaSelect: '#mesaDisponible',
@@ -464,7 +501,7 @@
             });
 
             refreshAssignmentUi({
-                codpuesto: 'select[name="codpuesto"]',
+                codpuesto: '#createCodpuesto',
                 tipo: '#tipoAsignacion',
                 mesaWrap: '#mesaDisponibleWrap',
                 mesaSelect: '#mesaDisponible',
@@ -486,16 +523,20 @@
             $(document).on('click', '.js-editar-coordinador', function () {
                 const coord = $(this).data('coord');
                 const tipo = coord.tipo || 'remanente';
+                const puestosAsignados = Array.isArray(coord.puestos_asignados) && coord.puestos_asignados.length
+                    ? coord.puestos_asignados.map(function (item) { return item.codpuesto; })
+                    : [coord.codpuesto || ''];
 
                 $('#formEditarCoordinador').attr('action', updateBaseUrl + '/' + coord.coordinacion_id);
+                $('#editingCoordId').val(coord.coordinacion_id || '');
                 $('#editNombre').val(coord.nombre || '');
                 $('#editCc').val(coord.cc || '');
                 $('#editCorreo').val(coord.correo || '');
                 $('#editTelefono').val(coord.telefono || '');
-                $('#editCodpuesto').val(coord.codpuesto || '');
                 $('#editTipoAsignacion').val(tipo);
                 $('#editMesaDisponible').data('selected', coord.mesa_num || '');
                 $('#editObservacion').val(coord.observacion || '');
+                $('#editCodpuesto').val(puestosAsignados).trigger('change');
 
                 refreshAssignmentUi({
                     codpuesto: '#editCodpuesto',
@@ -510,7 +551,29 @@
             });
 
             @if($errors->any())
-                $('#modalCrearCoordinador').modal('show');
+                @if(old('form_mode') === 'edit')
+                    $('#formEditarCoordinador').attr('action', updateBaseUrl + '/' + @json(old('editing_coord_id')));
+                    $('#editingCoordId').val(@json(old('editing_coord_id')));
+                    $('#editNombre').val(@json(old('nombre')));
+                    $('#editCc').val(@json(old('cc')));
+                    $('#editCorreo').val(@json(old('correo')));
+                    $('#editTelefono').val(@json(old('telefono')));
+                    $('#editTipoAsignacion').val(@json(old('tipo_asignacion', 'remanente')));
+                    $('#editMesaDisponible').data('selected', @json(old('mesa_num')));
+                    $('#editObservacion').val(@json(old('observacion')));
+                    $('#editCodpuesto').val(@json((array) old('codpuesto', []))).trigger('change');
+                    refreshAssignmentUi({
+                        codpuesto: '#editCodpuesto',
+                        tipo: '#editTipoAsignacion',
+                        mesaWrap: '#editMesaDisponibleWrap',
+                        mesaSelect: '#editMesaDisponible',
+                        ayuda: '#editTipoAyuda',
+                        selectedMesa: () => $('#editMesaDisponible').val() || $('#editMesaDisponible').data('selected') || '',
+                    });
+                    $('#modalEditarCoordinador').modal('show');
+                @else
+                    $('#modalCrearCoordinador').modal('show');
+                @endif
             @endif
         });
     </script>

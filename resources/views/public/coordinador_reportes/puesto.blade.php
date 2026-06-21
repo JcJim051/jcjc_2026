@@ -12,8 +12,8 @@
 </div>
 <div class="row mb-3">
     <div class="col-md-4 mb-2"><div class="metric-box"><div class="label">Mesas del puesto</div><div class="value">{{ $mesas->count() }}</div></div></div>
-    <div class="col-md-4 mb-2"><div class="metric-box"><div class="label">Afluencia completa</div><div class="value">{{ $mesas->where('afluencia_completa', true)->count() }}</div></div></div>
-    <div class="col-md-4 mb-2"><div class="metric-box"><div class="label">E14 reportados</div><div class="value">{{ $mesas->whereNotNull('e14_reportado_at')->count() }}</div></div></div>
+    <div class="col-md-4 mb-2"><div class="metric-box"><div class="label">Afluencia completa</div><div class="value">{{ !empty($flujo['afluencia']) ? $mesas->where('afluencia_completa', true)->count() : 'Off' }}</div></div></div>
+    <div class="col-md-4 mb-2"><div class="metric-box"><div class="label">E14 reportados</div><div class="value">{{ !empty($flujo['e14_link']) ? $mesas->whereNotNull('e14_reportado_at')->count() : 'Off' }}</div></div></div>
 </div>
 <div class="card soft-card">
     <div class="card-header">Selecciona una mesa</div>
@@ -57,8 +57,15 @@
                         </td>
                         <td>
                             <div class="d-flex flex-wrap" style="gap:8px;">
-                                <a href="{{ route('public.coordinador_reportes.mesa_afluencia', [$token->token, $mesa->id]) }}" class="btn btn-primary btn-sm">Afluencia</a>
-                                <a href="{{ route('public.coordinador_reportes.mesa_e14', [$token->token, $mesa->id]) }}" class="btn btn-outline-primary btn-sm">E14</a>
+                                @if(!empty($flujo['afluencia']))
+                                    <a href="{{ route('public.coordinador_reportes.mesa_afluencia', [$token->token, $mesa->id]) }}" class="btn btn-primary btn-sm">Afluencia</a>
+                                @endif
+                                @if(!empty($flujo['e14_link']))
+                                    <a href="{{ route('public.coordinador_reportes.mesa_e14', [$token->token, $mesa->id]) }}" class="btn btn-outline-primary btn-sm">E14</a>
+                                @endif
+                                @if(empty($flujo['afluencia']) && empty($flujo['e14_link']))
+                                    <span class="badge-soft badge-empty">Sin pasos activos</span>
+                                @endif
                             </div>
                         </td>
                     </tr>

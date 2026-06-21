@@ -87,8 +87,9 @@ class CoordinadoresOperativosController extends AbogadosController
     {
         $data = $request->validate([
             'eleccion_id' => 'required|integer|exists:elecciones,id',
-            'codpuesto' => 'required|string',
-            'tipo_asignacion' => 'required|string|in:remanente,mesa,sin_acreditar',
+            'codpuesto' => 'required|array|min:1',
+            'codpuesto.*' => 'required|string',
+            'tipo_asignacion' => 'nullable|string|in:remanente,mesa,sin_acreditar',
             'mesa_num' => 'nullable|string|max:20',
             'nombre' => 'required|string|max:191',
             'cc' => 'required|string|max:50',
@@ -102,9 +103,14 @@ class CoordinadoresOperativosController extends AbogadosController
             return back()->withErrors(['eleccion_id' => 'Solo puedes crear coordinadores manualmente en una elección activa.'])->withInput();
         }
 
-        $puesto = $this->findEleccionPuestoByCodigoLocal((int) $data['eleccion_id'], trim((string) $data['codpuesto']));
-        if (!$puesto) {
-            return back()->withErrors(['codpuesto' => 'El puesto seleccionado no existe en la DIVIPOL de la elección.'])->withInput();
+        $codpuestos = collect($data['codpuesto'] ?? [])
+            ->map(fn ($item) => trim((string) $item))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($codpuestos->isEmpty()) {
+            return back()->withErrors(['codpuesto' => 'Debes seleccionar al menos un puesto.'])->withInput();
         }
 
         $cc = $this->digitsOnlyLocal($data['cc']);
@@ -113,10 +119,13 @@ class CoordinadoresOperativosController extends AbogadosController
         }
 
         $assignment = null;
+        $createdCount = 0;
 
         try {
-            DB::transaction(function () use ($data, $eleccion, $puesto, $cc, &$assignment) {
-                $codpuesto = $this->buildEleccionPuestoKeyLocal((object) $puesto);
+            DB::transaction(function () use ($data, $eleccion, $codpuestos, $cc, &$assignment, &$createdCount) {
+                $puestoLabels = [];
+                $comunas = [];
+                $ultimoAssignment = null;
 
                 $abogado = Abogado::where('cc', $cc)->lockForUpdate()->first();
                 if ($abogado) {
@@ -124,8 +133,6 @@ class CoordinadoresOperativosController extends AbogadosController
                         'nombre' => trim((string) $data['nombre']),
                         'correo' => trim((string) ($data['correo'] ?? '')) ?: ($abogado->correo ?: ($cc . '@sin-correo.local')),
                         'telefono' => trim((string) ($data['telefono'] ?? '')) ?: ($abogado->telefono ?: 'N/D'),
-                        'comuna' => trim((string) ($puesto->comuna ?? 'N/D')) ?: 'N/D',
-                        'puesto' => trim(((string) ($puesto->municipio ?? '')) . ' - ' . ((string) ($puesto->puesto ?? 'N/D')), ' -'),
                         'observacion' => trim((string) ($data['observacion'] ?? '')) ?: $abogado->observacion,
                         'activo' => true,
                     ])->save();
@@ -135,46 +142,73 @@ class CoordinadoresOperativosController extends AbogadosController
                         'cc' => $cc,
                         'correo' => trim((string) ($data['correo'] ?? '')) ?: ($cc . '@sin-correo.local'),
                         'telefono' => trim((string) ($data['telefono'] ?? '')) ?: 'N/D',
-                        'comuna' => trim((string) ($puesto->comuna ?? 'N/D')) ?: 'N/D',
-                        'puesto' => trim(((string) ($puesto->municipio ?? '')) . ' - ' . ((string) ($puesto->puesto ?? 'N/D')), ' -'),
+                        'comuna' => 'N/D',
+                        'puesto' => 'N/D',
                         'observacion' => trim((string) ($data['observacion'] ?? '')) ?: null,
                         'activo' => true,
                     ]);
                 }
 
-                $yaAsignadoMismoPuesto = AbogadoCoordinacion::where('abogado_id', $abogado->id)
-                    ->where('eleccion_id', $eleccion->id)
-                    ->where('codpuesto', $codpuesto)
-                    ->whereNull('released_at')
-                    ->lockForUpdate()
-                    ->exists();
+                foreach ($codpuestos as $index => $codpuestoSeleccionado) {
+                    $puesto = $this->findEleccionPuestoByCodigoLocal((int) $data['eleccion_id'], $codpuestoSeleccionado);
+                    if (!$puesto) {
+                        throw new \RuntimeException('Uno de los puestos seleccionados no existe en la DIVIPOL de la elección.');
+                    }
 
-                if ($yaAsignadoMismoPuesto) {
-                    throw new \RuntimeException('Esta persona ya tiene una coordinación activa en este mismo puesto para esta elección.');
+                    $codpuesto = $this->buildEleccionPuestoKeyLocal((object) $puesto);
+
+                    $yaAsignadoMismoPuesto = AbogadoCoordinacion::where('abogado_id', $abogado->id)
+                        ->where('eleccion_id', $eleccion->id)
+                        ->where('codpuesto', $codpuesto)
+                        ->whereNull('released_at')
+                        ->lockForUpdate()
+                        ->exists();
+
+                    if ($yaAsignadoMismoPuesto) {
+                        throw new \RuntimeException('Esta persona ya tiene una coordinación activa en uno de los puestos seleccionados para esta elección.');
+                    }
+
+                    $usaAsignacionManual = $codpuestos->count() === 1;
+                    $assignmentActual = $usaAsignacionManual
+                        ? $this->resolveManualCoordinatorAssignment(
+                            (int) $eleccion->id,
+                            (object) $puesto,
+                            $codpuesto,
+                            (string) ($data['tipo_asignacion'] ?? 'remanente'),
+                            trim((string) ($data['mesa_num'] ?? ''))
+                        )
+                        : $this->resolveCoordinatorAssignmentLocal((int) $eleccion->id, (object) $puesto, $codpuesto);
+
+                    AbogadoCoordinacion::create([
+                        'abogado_id' => $abogado->id,
+                        'eleccion_id' => $eleccion->id,
+                        'eleccion_mesa_id' => $assignmentActual['eleccion_mesa_id'],
+                        'codpuesto' => $codpuesto,
+                        'seller_id' => null,
+                        'assigned_by' => auth()->id(),
+                        'assigned_at' => Carbon::now('America/Bogota'),
+                        'validacion_estado' => $assignmentActual['validacion_estado'],
+                        'observacion' => trim(((string) ($data['observacion'] ?? '')) ?: 'Creado manualmente desde módulo Coordinadores') . ' | ' . $assignmentActual['note'],
+                    ]);
+
+                    $puestoLabels[] = trim(((string) ($puesto->municipio ?? '')) . ' - ' . ((string) ($puesto->puesto ?? '')), ' -');
+                    $comunas[] = trim((string) ($puesto->comuna ?? 'N/D')) ?: 'N/D';
+                    $ultimoAssignment = $assignmentActual;
+                    $createdCount++;
                 }
 
-                $assignment = $this->resolveManualCoordinatorAssignment(
-                    (int) $eleccion->id,
-                    (object) $puesto,
-                    $codpuesto,
-                    (string) $data['tipo_asignacion'],
-                    trim((string) ($data['mesa_num'] ?? ''))
-                );
-
-                $abogado->mesa = $assignment['abogado_mesa'];
+                $abogado->comuna = collect($comunas)->filter()->unique()->count() === 1
+                    ? (collect($comunas)->filter()->first() ?: 'N/D')
+                    : 'Múltiples';
+                $abogado->puesto = $codpuestos->count() === 1
+                    ? (collect($puestoLabels)->first() ?: 'N/D')
+                    : 'Múltiples puestos';
+                $abogado->mesa = $codpuestos->count() === 1
+                    ? (($ultimoAssignment['abogado_mesa'] ?? 'N/D'))
+                    : 'Múltiple';
                 $abogado->save();
 
-                AbogadoCoordinacion::create([
-                    'abogado_id' => $abogado->id,
-                    'eleccion_id' => $eleccion->id,
-                    'eleccion_mesa_id' => $assignment['eleccion_mesa_id'],
-                    'codpuesto' => $codpuesto,
-                    'seller_id' => null,
-                    'assigned_by' => auth()->id(),
-                    'assigned_at' => Carbon::now('America/Bogota'),
-                    'validacion_estado' => $assignment['validacion_estado'],
-                    'observacion' => trim(((string) ($data['observacion'] ?? '')) ?: 'Creado manualmente desde módulo Coordinadores') . ' | ' . $assignment['note'],
-                ]);
+                $assignment = $ultimoAssignment;
             });
         } catch (\RuntimeException $e) {
             return back()->withErrors(['codpuesto' => $e->getMessage()])->withInput();
@@ -182,7 +216,9 @@ class CoordinadoresOperativosController extends AbogadosController
 
         return redirect()
             ->route('admin.coordinadores_operativos.index', ['eleccion_id' => $eleccion->id])
-            ->with('info', 'Coordinador creado correctamente como ' . ($assignment['label'] ?? 'coordinador') . '.');
+            ->with('info', $createdCount > 1
+                ? 'Coordinador creado correctamente en ' . $createdCount . ' puestos.'
+                : 'Coordinador creado correctamente como ' . ($assignment['label'] ?? 'coordinador') . '.');
     }
 
     public function integrateExisting(Request $request)
@@ -211,8 +247,9 @@ class CoordinadoresOperativosController extends AbogadosController
 
         $data = $request->validate([
             'eleccion_id' => 'required|integer|exists:elecciones,id',
-            'codpuesto' => 'required|string',
-            'tipo_asignacion' => 'required|string|in:remanente,mesa,sin_acreditar',
+            'codpuesto' => 'required|array|min:1',
+            'codpuesto.*' => 'required|string',
+            'tipo_asignacion' => 'nullable|string|in:remanente,mesa,sin_acreditar',
             'mesa_num' => 'nullable|string|max:20',
             'nombre' => 'required|string|max:191',
             'cc' => 'required|string|max:50',
@@ -226,9 +263,24 @@ class CoordinadoresOperativosController extends AbogadosController
         }
 
         $eleccion = Eleccion::find($data['eleccion_id']);
-        $puesto = $this->findEleccionPuestoByCodigoLocal((int) $data['eleccion_id'], trim((string) $data['codpuesto']));
-        if (!$eleccion || !$puesto) {
-            return back()->withErrors(['codpuesto' => 'El puesto seleccionado no existe en la DIVIPOL de la elección.'])->withInput();
+        if (!$eleccion) {
+            return back()->withErrors(['eleccion_id' => 'La elección seleccionada no existe.'])->withInput();
+        }
+
+        $codpuestos = collect($data['codpuesto'] ?? [])
+            ->map(fn ($item) => trim((string) $item))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($codpuestos->isEmpty()) {
+            return back()->withErrors(['codpuesto' => 'Debes seleccionar al menos un puesto.'])->withInput();
+        }
+
+        foreach ($codpuestos as $codpuestoSeleccionado) {
+            if (!$this->findEleccionPuestoByCodigoLocal((int) $data['eleccion_id'], $codpuestoSeleccionado)) {
+                return back()->withErrors(['codpuesto' => 'Uno de los puestos seleccionados no existe en la DIVIPOL de la elección.'])->withInput();
+            }
         }
 
         $cc = $this->digitsOnlyLocal($data['cc']);
@@ -237,9 +289,10 @@ class CoordinadoresOperativosController extends AbogadosController
         }
 
         $assignment = null;
+        $activeCount = 0;
 
         try {
-            DB::transaction(function () use ($data, $coordinacion, $puesto, $cc, &$assignment) {
+            DB::transaction(function () use ($data, $coordinacion, $codpuestos, $cc, &$assignment, &$activeCount) {
                 $coordinacion = AbogadoCoordinacion::with('abogado')
                     ->whereKey($coordinacion->id)
                     ->whereNull('released_at')
@@ -255,47 +308,115 @@ class CoordinadoresOperativosController extends AbogadosController
                     }
                 }
 
-                $codpuesto = $this->buildEleccionPuestoKeyLocal((object) $puesto);
-                $duplicadaMismoPuesto = AbogadoCoordinacion::where('abogado_id', $abogado->id)
+                $activas = AbogadoCoordinacion::where('abogado_id', $abogado->id)
                     ->where('eleccion_id', (int) $data['eleccion_id'])
-                    ->where('codpuesto', $codpuesto)
                     ->whereNull('released_at')
-                    ->where('id', '<>', (int) $coordinacion->id)
+                    ->orderBy('id')
                     ->lockForUpdate()
-                    ->exists();
+                    ->get()
+                    ->keyBy('codpuesto');
 
-                if ($duplicadaMismoPuesto) {
-                    throw new \RuntimeException('Esta persona ya tiene otra coordinación activa en este mismo puesto para esta elección.');
+                $puestoLabels = [];
+                $comunas = [];
+                $ultimaAsignacion = null;
+                $selectedCount = $codpuestos->count();
+                $selectedKeys = $codpuestos->values()->all();
+                $now = Carbon::now('America/Bogota');
+                $releaseNote = 'Liberado por edición múltiple por ' . (optional(auth()->user())->name ?? 'administrador')
+                    . ' el ' . $now->format('Y-m-d H:i');
+
+                foreach ($activas as $codpuestoActivo => $coordActiva) {
+                    if (!$codpuestos->contains($codpuestoActivo)) {
+                        $coordActiva->released_at = $now;
+                        $coordActiva->validacion_estado = 'liberado';
+                        $coordActiva->observacion = trim(implode(' | ', array_filter([$coordActiva->observacion, $releaseNote])));
+                        $coordActiva->save();
+                    }
                 }
 
-                $assignment = $this->resolveManualCoordinatorAssignment(
-                    (int) $data['eleccion_id'],
-                    (object) $puesto,
-                    $codpuesto,
-                    (string) $data['tipo_asignacion'],
-                    trim((string) ($data['mesa_num'] ?? '')),
-                    (int) $coordinacion->id
-                );
+                foreach ($selectedKeys as $codpuestoSeleccionado) {
+                    $puesto = $this->findEleccionPuestoByCodigoLocal((int) $data['eleccion_id'], $codpuestoSeleccionado);
+                    $codpuesto = $this->buildEleccionPuestoKeyLocal((object) $puesto);
+                    $existente = $activas->get($codpuesto);
+
+                    if ($existente) {
+                        if ($selectedCount === 1) {
+                            $assignmentActual = $this->resolveManualCoordinatorAssignment(
+                                (int) $data['eleccion_id'],
+                                (object) $puesto,
+                                $codpuesto,
+                                (string) ($data['tipo_asignacion'] ?? 'remanente'),
+                                trim((string) ($data['mesa_num'] ?? '')),
+                                (int) $existente->id
+                            );
+
+                            $existente->codpuesto = $codpuesto;
+                            $existente->eleccion_mesa_id = $assignmentActual['eleccion_mesa_id'];
+                            $existente->validacion_estado = $existente->validacion_estado === 'validado' ? 'validado' : $assignmentActual['validacion_estado'];
+                            $existente->observacion = trim(((string) ($data['observacion'] ?? '')) ?: $existente->observacion);
+                            $existente->save();
+
+                            $ultimaAsignacion = $assignmentActual;
+                        } else {
+                            $ultimaAsignacion = [
+                                'label' => 'Múltiples puestos',
+                                'abogado_mesa' => 'Múltiple',
+                            ];
+                        }
+                    } else {
+                        $assignmentActual = $selectedCount === 1
+                            ? $this->resolveManualCoordinatorAssignment(
+                                (int) $data['eleccion_id'],
+                                (object) $puesto,
+                                $codpuesto,
+                                (string) ($data['tipo_asignacion'] ?? 'remanente'),
+                                trim((string) ($data['mesa_num'] ?? ''))
+                            )
+                            : $this->resolveCoordinatorAssignmentLocal((int) $data['eleccion_id'], (object) $puesto, $codpuesto);
+
+                        AbogadoCoordinacion::create([
+                            'abogado_id' => $abogado->id,
+                            'eleccion_id' => (int) $data['eleccion_id'],
+                            'eleccion_mesa_id' => $assignmentActual['eleccion_mesa_id'],
+                            'codpuesto' => $codpuesto,
+                            'seller_id' => null,
+                            'assigned_by' => auth()->id(),
+                            'assigned_at' => $now,
+                            'validacion_estado' => $assignmentActual['validacion_estado'],
+                            'observacion' => trim(((string) ($data['observacion'] ?? '')) ?: 'Actualizado manualmente desde módulo Coordinadores') . ' | ' . $assignmentActual['note'],
+                        ]);
+
+                        $ultimaAsignacion = $assignmentActual;
+                    }
+
+                    $puestoLabels[] = trim(((string) ($puesto->municipio ?? '')) . ' - ' . ((string) ($puesto->puesto ?? '')), ' -');
+                    $comunas[] = trim((string) ($puesto->comuna ?? 'N/D')) ?: 'N/D';
+                }
+
+                $activeCount = AbogadoCoordinacion::where('abogado_id', $abogado->id)
+                    ->where('eleccion_id', (int) $data['eleccion_id'])
+                    ->whereNull('released_at')
+                    ->count();
 
                 $abogado->fill([
                     'nombre' => trim((string) $data['nombre']),
                     'cc' => $cc,
                     'correo' => trim((string) ($data['correo'] ?? '')) ?: ($abogado->correo ?: ($cc . '@sin-correo.local')),
                     'telefono' => trim((string) ($data['telefono'] ?? '')) ?: ($abogado->telefono ?: 'N/D'),
-                    'comuna' => trim((string) ($puesto->comuna ?? 'N/D')) ?: 'N/D',
-                    'puesto' => trim(((string) ($puesto->municipio ?? '')) . ' - ' . ((string) ($puesto->puesto ?? 'N/D')), ' -'),
-                    'mesa' => $assignment['abogado_mesa'],
+                    'comuna' => collect($comunas)->filter()->unique()->count() === 1
+                        ? (collect($comunas)->filter()->first() ?: 'N/D')
+                        : 'Múltiples',
+                    'puesto' => $selectedCount === 1
+                        ? (collect($puestoLabels)->first() ?: 'N/D')
+                        : 'Múltiples puestos',
+                    'mesa' => $selectedCount === 1
+                        ? (($ultimaAsignacion['abogado_mesa'] ?? 'N/D'))
+                        : 'Múltiple',
                     'observacion' => trim((string) ($data['observacion'] ?? '')) ?: $abogado->observacion,
                     'activo' => true,
                 ])->save();
 
-                $coordinacion->codpuesto = $codpuesto;
-                $coordinacion->eleccion_mesa_id = $assignment['eleccion_mesa_id'];
-                $coordinacion->validacion_estado = $coordinacion->validacion_estado === 'validado'
-                    ? 'validado'
-                    : $assignment['validacion_estado'];
-                $coordinacion->observacion = trim(((string) ($data['observacion'] ?? '')) ?: $coordinacion->observacion);
-                $coordinacion->save();
+                $assignment = $ultimaAsignacion;
             });
         } catch (\RuntimeException $e) {
             return back()->withErrors(['coordinacion' => $e->getMessage()])->withInput();
@@ -303,7 +424,9 @@ class CoordinadoresOperativosController extends AbogadosController
 
         return redirect()
             ->route('admin.coordinadores_operativos.index', ['eleccion_id' => $data['eleccion_id']])
-            ->with('info', 'Coordinador actualizado correctamente como ' . ($assignment['label'] ?? 'coordinador') . '.');
+            ->with('info', $activeCount > 1
+                ? 'Coordinador actualizado correctamente con ' . $activeCount . ' puestos activos.'
+                : 'Coordinador actualizado correctamente como ' . ($assignment['label'] ?? 'coordinador') . '.');
     }
 
     private function buildDataset(int $eleccionId): array
@@ -332,9 +455,20 @@ class CoordinadoresOperativosController extends AbogadosController
             ->groupBy('eleccion_puesto_id')
             ->pluck('total', 'eleccion_puesto_id');
 
-        $coordinaciones = DB::table('abogado_coordinaciones as ac')
+        $coordinacionesFlat = DB::table('abogado_coordinaciones as ac')
             ->join('abogados as a', 'a.id', '=', 'ac.abogado_id')
             ->leftJoin('eleccion_mesas as em', 'em.id', '=', 'ac.eleccion_mesa_id')
+            ->leftJoin('eleccion_puestos as ep', function ($join) {
+                $join->on('ep.eleccion_id', '=', 'ac.eleccion_id')
+                    ->where(function ($query) {
+                        $query->whereColumn('ep.codigo_puesto', 'ac.codpuesto')
+                            ->orWhereRaw('CONCAT(ep.dd,ep.mm,ep.zz,ep.pp) = ac.codpuesto')
+                            ->orWhere(function ($shortCode) {
+                                $shortCode->whereRaw('CHAR_LENGTH(ac.codpuesto) <= 2')
+                                    ->whereColumn('ep.pp', 'ac.codpuesto');
+                            });
+                    });
+            })
             ->where('ac.eleccion_id', $eleccionId)
             ->whereNull('ac.released_at')
             ->orderBy('a.nombre')
@@ -350,8 +484,19 @@ class CoordinadoresOperativosController extends AbogadosController
                 'a.correo',
                 'a.telefono',
                 'em.mesa_num',
-            ])
-            ->groupBy('codpuesto');
+                'ep.municipio as puesto_municipio',
+                'ep.puesto as puesto_nombre',
+            ]);
+
+        $coordinaciones = $coordinacionesFlat->groupBy('codpuesto');
+        $puestosPorAbogado = $coordinacionesFlat->groupBy('abogado_id')->map(function ($items) {
+            return $items->map(function ($item) {
+                return [
+                    'codpuesto' => (string) ($item->codpuesto ?? ''),
+                    'label' => trim(((string) ($item->puesto_municipio ?? '')) . ' - ' . ((string) ($item->puesto_nombre ?? '')), ' -'),
+                ];
+            })->unique('codpuesto')->values()->all();
+        });
 
         $puestoOptions = $puestos->map(function ($puesto) use ($eleccionId) {
             $codpuesto = $this->buildEleccionPuestoKeyLocal((object) $puesto);
@@ -370,7 +515,7 @@ class CoordinadoresOperativosController extends AbogadosController
             ];
         });
 
-        $rows = $puestos->map(function ($puesto) use ($eleccionId, $mesasPorPuesto, $coordinaciones) {
+        $rows = $puestos->map(function ($puesto) use ($eleccionId, $mesasPorPuesto, $coordinaciones, $puestosPorAbogado) {
             $codpuesto = $this->buildEleccionPuestoKeyLocal((object) $puesto);
             $group = collect($coordinaciones->get($codpuesto, []))->values();
             $mesasTotal = (int) ($mesasPorPuesto[$puesto->id] ?? ($puesto->mesas_total ?? 0));
@@ -394,7 +539,7 @@ class CoordinadoresOperativosController extends AbogadosController
                 'coordinadores_mesa' => $mesaCount,
                 'coordinadores_sin_acreditar' => $sinAcreditarCount,
                 'rem_disponibles' => max(0, $remPermitidos - $remCount),
-                'coordinadores' => $group->map(function ($coord) use ($codpuesto, $puesto) {
+                'coordinadores' => $group->map(function ($coord) use ($codpuesto, $puesto, $puestosPorAbogado) {
                     $tipo = $this->coordTipoLocal($coord);
                     $label = $tipo === 'mesa'
                         ? 'Mesa ' . $coord->mesa_num
@@ -412,6 +557,7 @@ class CoordinadoresOperativosController extends AbogadosController
                         'mesa_num' => $coord->mesa_num !== null ? (string) $coord->mesa_num : '',
                         'codpuesto' => $codpuesto,
                         'puesto_label' => trim(((string) ($puesto->municipio ?? 'N/D')) . ' - ' . ((string) ($puesto->puesto ?? 'N/D'))),
+                        'puestos_asignados' => $puestosPorAbogado->get((int) $coord->abogado_id, []),
                         'observacion' => (string) ($coord->observacion ?? ''),
                         'liberar_url' => route('admin.abogados.liberar_coordinador', [
                             'abogado' => (int) $coord->abogado_id,

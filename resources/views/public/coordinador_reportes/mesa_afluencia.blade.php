@@ -7,7 +7,9 @@
     <div><strong>Coordinador:</strong> {{ $abogado->nombre ?? 'N/D' }}</div>
     <div class="d-flex flex-wrap" style="gap:8px;">
         <a href="{{ route('public.coordinador_reportes.puesto', $token->token) }}" class="btn btn-outline-primary">Volver a mesas</a>
-        <a href="{{ route('public.coordinador_reportes.mesa_e14', [$token->token, $mesa->mesa_id]) }}" class="btn btn-primary">Ir a E14</a>
+        @if(!empty($flujo['e14_link']))
+            <a href="{{ route('public.coordinador_reportes.mesa_e14', [$token->token, $mesa->mesa_id]) }}" class="btn btn-primary">Ir a E14</a>
+        @endif
     </div>
 </div>
 <div class="row">
