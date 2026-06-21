@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Seller;
 use Illuminate\Support\Facades\DB;
+use Spatie\Permission\Models\Role;
 
 
 class AdminController extends Controller
@@ -275,8 +276,15 @@ class AdminController extends Controller
         5 => 'Validador Ani',
         6 => 'Auditor',
         7 => 'Mesa de Crisis',
+        8 => 'Dashboard Operativo',
     ];
     $rol = $roles[$role] ?? 'Sin rol';
+
+    $roleName = trim((string) optional(Role::find((int) $role))->name);
+    $dashboardOnlyRoles = ['dashboard operativo', 'dashboard_operativo', 'dashboard-operativo', 'solo dashboard', 'dashboard pmu'];
+    if (in_array(mb_strtolower($roleName), $dashboardOnlyRoles, true)) {
+        return redirect()->route('admin.mesa_reportes.dashboard');
+    }
 
     // 🔢 Convertir puestos múltiples a array
     $puestos = $user->codpuesto

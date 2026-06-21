@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Gate;
+use Spatie\Permission\Models\Role;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -41,6 +42,18 @@ class AuthServiceProvider extends ServiceProvider
 
             }
         });     
+
+        Gate::define('dashboard-operativo-ver', function ($user) {
+            if (in_array((int) ($user->role ?? 0), [4, 6], true)) {
+                return true;
+            }
+
+            return $this->isDashboardOnlyUser($user);
+        });
+
+        Gate::define('dashboard-operativo-gestionar', function ($user) {
+            return in_array((int) ($user->role ?? 0), [4, 6], true);
+        });
 
           Gate::define('Superuser-administrador-consultor-auditor', function($user){
             if ($user->id == 1) {
@@ -364,5 +377,19 @@ class AuthServiceProvider extends ServiceProvider
 
             }
         });  
+    }
+
+    private function isDashboardOnlyUser($user): bool
+    {
+        $roleName = trim((string) optional(Role::find((int) ($user->role ?? 0)))->name);
+        $normalized = mb_strtolower($roleName);
+
+        return in_array($normalized, [
+            'dashboard operativo',
+            'dashboard_operativo',
+            'dashboard-operativo',
+            'solo dashboard',
+            'dashboard pmu',
+        ], true);
     }
 }

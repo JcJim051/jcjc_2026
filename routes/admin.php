@@ -202,8 +202,11 @@ Route::post('cne-import/referidos-masivos/{batch}/apply', [CneImportController::
 Route::post('cne-import/referidos-masivos/{batch}/cancel', [CneImportController::class, 'cancelReferidosMasivos'])->name('admin.cne_import.referidos_masivos.cancel');
 Route::get('cne-import/referidos-masivos/{batch}/errors', [CneImportController::class, 'downloadReferidosErrores'])->name('admin.cne_import.referidos_masivos.errors');
 
-Route::middleware('can:Superuser-administrador-consultor-auditor')->group(function () {
+Route::middleware('can:dashboard-operativo-ver')->group(function () {
     Route::get('mesa-reportes/dashboard', [MesaReporteDashboardController::class, 'index'])->name('admin.mesa_reportes.dashboard');
+});
+
+Route::middleware('can:dashboard-operativo-gestionar')->group(function () {
     Route::post('mesa-reportes/steps', [MesaReporteDashboardController::class, 'updateSteps'])->name('admin.mesa_reportes.steps');
     Route::get('mesa-reportes/afluencia', [MesaReporteDashboardController::class, 'afluencia'])->name('admin.mesa_reportes.afluencia');
     Route::get('mesa-reportes/e14', [MesaReporteDashboardController::class, 'e14'])->name('admin.mesa_reportes.e14');

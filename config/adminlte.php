@@ -336,7 +336,7 @@ return [
         
 [   'text' => 'Indicadores',
     'icon'        => 'fas fa-tachometer-alt fa-rotate-90',  
-    'can'  => 'Superuser-administrador-escrutador-consultor-auditor-candidato',  
+    'can'  => 'dashboard-operativo-ver',  
     'submenu' => [
         [
             'text'        => 'Indicadores acreditación de testigos',
@@ -351,7 +351,7 @@ return [
             'route'         => 'admin.mesa_reportes.dashboard',
             'icon'        => 'fas fa-satellite-dish',
             'label_color' => 'warning',
-            'can'  => 'Superuser-administrador-consultor-auditor',
+            'can'  => 'dashboard-operativo-ver',
         ],
         [   'text'        => 'Asistencia de testigos',
             'route'         => 'admin.asistencia.index',
