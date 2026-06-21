@@ -34,4 +34,14 @@ class AbogadoCoordinacion extends Model
     {
         return $this->belongsTo(EleccionMesa::class, 'eleccion_mesa_id');
     }
+
+    public function eleccionMesa()
+    {
+        return $this->mesa();
+    }
+
+    public function abogado()
+    {
+        return $this->belongsTo(Abogado::class, 'abogado_id');
+    }
 }

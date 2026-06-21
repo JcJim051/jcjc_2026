@@ -42,6 +42,8 @@ use App\Http\Controllers\Admin\ReunionesAbogadosController;
 use App\Http\Controllers\Admin\BloqueosMesasController;
 use App\Http\Controllers\Admin\DivipolController;
 use App\Http\Controllers\Admin\AbogadoAccessTokenController;
+use App\Http\Controllers\Admin\MesaReporteDashboardController;
+use App\Http\Controllers\Admin\CoordinadoresOperativosController;
 
 Route::get('', [AdminController::class, '__invoke'])->name('admin.home');
 
@@ -117,12 +119,19 @@ Route::middleware('can:Superuser')->group(function () {
         ->name('admin.abogado_tokens.destroy');
 });
 Route::resource('abogados', AbogadosController::class)->names('admin.abogados');
+Route::get('coordinadores-operativos', [CoordinadoresOperativosController::class, 'index'])->name('admin.coordinadores_operativos.index');
+Route::get('coordinadores-operativos/exportar', [CoordinadoresOperativosController::class, 'export'])->name('admin.coordinadores_operativos.export');
+Route::post('coordinadores-operativos/integrar', [CoordinadoresOperativosController::class, 'integrateExisting'])->name('admin.coordinadores_operativos.integrate');
+Route::post('coordinadores-operativos/manual', [CoordinadoresOperativosController::class, 'storeManual'])->name('admin.coordinadores_operativos.store_manual');
+Route::put('coordinadores-operativos/{coordinacion}', [CoordinadoresOperativosController::class, 'updateManual'])->name('admin.coordinadores_operativos.update_manual');
 Route::post('abogados/{abogado}/asignar-coordinador', [AbogadosController::class, 'asignarCoordinador'])
     ->name('admin.abogados.asignar_coordinador');
 Route::post('abogados/{abogado}/coordinaciones/{coordinacion}/liberar', [AbogadosController::class, 'liberarCoordinador'])
     ->name('admin.abogados.liberar_coordinador');
 Route::post('abogados/import-sheet', [AbogadosController::class, 'importFromSheet'])
     ->name('admin.abogados.import_sheet');
+Route::get('abogados/import-coordinadores/template', [AbogadosController::class, 'downloadCoordinatorTemplate'])
+    ->name('admin.abogados.import_coordinadores.template');
 Route::post('abogados/import-coordinadores', [AbogadosController::class, 'importCoordinadores'])
     ->name('admin.abogados.import_coordinadores');
 Route::post('abogados/reubicar-coordinadores/preview', [AbogadosController::class, 'previewReubicarCoordinadores'])
@@ -192,3 +201,9 @@ Route::get('cne-import/referidos-masivos/{batch}', [CneImportController::class, 
 Route::post('cne-import/referidos-masivos/{batch}/apply', [CneImportController::class, 'applyReferidosMasivos'])->name('admin.cne_import.referidos_masivos.apply');
 Route::post('cne-import/referidos-masivos/{batch}/cancel', [CneImportController::class, 'cancelReferidosMasivos'])->name('admin.cne_import.referidos_masivos.cancel');
 Route::get('cne-import/referidos-masivos/{batch}/errors', [CneImportController::class, 'downloadReferidosErrores'])->name('admin.cne_import.referidos_masivos.errors');
+
+Route::middleware('can:Superuser-administrador-consultor-auditor')->group(function () {
+    Route::get('mesa-reportes/dashboard', [MesaReporteDashboardController::class, 'index'])->name('admin.mesa_reportes.dashboard');
+    Route::get('mesa-reportes/afluencia', [MesaReporteDashboardController::class, 'afluencia'])->name('admin.mesa_reportes.afluencia');
+    Route::get('mesa-reportes/e14', [MesaReporteDashboardController::class, 'e14'])->name('admin.mesa_reportes.e14');
+});

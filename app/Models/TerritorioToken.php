@@ -18,6 +18,10 @@ class TerritorioToken extends Model
         'municipios' => 'array',
     ];
 
+    protected $appends = [
+        'modulo_resuelto',
+    ];
+
     protected $fillable = [
         'eleccion_id',
         'dd',
@@ -29,5 +33,12 @@ class TerritorioToken extends Model
         'responsable',
         'activo',
         'expires_at',
+        'modulo',
     ];
+
+    public function getModuloResueltoAttribute(): string
+    {
+        return $this->modulo ?: ($this->es_consulta ? 'consulta' : 'referidos');
+    }
 }
+

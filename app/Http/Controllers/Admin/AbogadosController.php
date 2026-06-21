@@ -936,12 +936,13 @@ class AbogadosController extends Controller
         try {
             DB::transaction(function () use ($abogado, $puesto, $data) {
                 $codpuesto = $this->buildEleccionPuestoKey($puesto);
-                $yaAsignado = AbogadoCoordinacion::where('abogado_id', $abogado->id)
+                $yaAsignadoMismoPuesto = AbogadoCoordinacion::where('abogado_id', $abogado->id)
                     ->where('eleccion_id', $data['eleccion_id'])
+                    ->where('codpuesto', $codpuesto)
                     ->whereNull('released_at')
                     ->exists();
-                if ($yaAsignado) {
-                    throw new \RuntimeException('Esta persona ya tiene una coordinación activa en esta elección.');
+                if ($yaAsignadoMismoPuesto) {
+                    throw new \RuntimeException('Esta persona ya tiene una coordinación activa en este mismo puesto para esta elección.');
                 }
 
                 $totalRem = $this->getRemanentesPermitidos((int) $data['eleccion_id'], $codpuesto);
@@ -1006,6 +1007,53 @@ class AbogadosController extends Controller
         return back()->with('info', 'Coordinador retirado. El cupo remanente quedó disponible nuevamente.');
     }
 
+
+    public function downloadCoordinatorTemplate()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Plantilla');
+        $headers = ['cedula', 'nombre', 'puesto', 'correo', 'telefono', 'direccion', 'observacion'];
+        foreach ($headers as $columnIndex => $header) {
+            $sheet->setCellValueByColumnAndRow($columnIndex + 1, 1, $header);
+        }
+        $sheet->fromArray([
+            '1030590916',
+            'Jonathan Camilo Jimenez Castañeda',
+            'IE JUAN PABLO II SEDE CHAPINERO BAJO',
+            'correo@ejemplo.com',
+            '3100000000',
+            'Cra 1 # 2-3',
+            'Coordinador de apoyo',
+        ], null, 'A2');
+
+        $instructions = $spreadsheet->createSheet();
+        $instructions->setTitle('Instrucciones');
+        $instructions->fromArray([
+            ['CAMPO', 'REGLA'],
+            ['cedula', 'Obligatoria. Se cruza contra la caracterización.'],
+            ['nombre', 'Obligatorio. Se usará para crear o actualizar el abogado.'],
+            ['puesto', 'Obligatorio. Debe existir en la DIVIPOL de la elección activa.'],
+            ['correo', 'Opcional. Solo actualiza si trae un valor real.'],
+            ['telefono', 'Opcional. Solo actualiza si trae un valor real.'],
+            ['direccion', 'Opcional. Solo actualiza si trae un valor real.'],
+            ['observacion', 'Opcional. Se adjunta a la coordinación creada.'],
+        ], null, 'A1');
+
+        foreach (range('A', 'G') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+        foreach (range('A', 'B') as $col) {
+            $instructions->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $file = tempnam(sys_get_temp_dir(), 'coord_tpl_');
+        (new Xlsx($spreadsheet))->save($file);
+        $spreadsheet->disconnectWorksheets();
+
+        return response()->download($file, 'plantilla_coordinadores.xlsx')->deleteFileAfterSend(true);
+    }
+
     public function importCoordinadores(Request $request)
     {
         $data = $request->validate([
@@ -1050,6 +1098,9 @@ class AbogadosController extends Controller
         $updatedAbogados = 0;
         $createdCoordinaciones = 0;
         $omitted = 0;
+        $creadosRem = 0;
+        $creadosMesa = 0;
+        $creadosSinAcreditar = 0;
         $errors = [];
 
         foreach (array_slice($rows, $headerRowIndex + 1) as $offset => $row) {
@@ -1088,25 +1139,16 @@ class AbogadosController extends Controller
                     &$createdAbogados,
                     &$updatedAbogados,
                     &$createdCoordinaciones,
-                    &$omitted
+                    &$omitted,
+                    &$creadosRem,
+                    &$creadosMesa,
+                    &$creadosSinAcreditar
                 ) {
                     $abogado = Abogado::where('cc', $cc)->lockForUpdate()->first();
                     $incomingCorreo = trim((string) $this->valueByAliases($row, $idx, ['correo', 'email']));
                     $incomingDireccion = trim((string) $this->valueByAliases($row, $idx, ['dir', 'direccion', 'direccion_de_residencia']));
                     $incomingTelefono = trim((string) $this->valueByAliases($row, $idx, ['telefono', 'celular', 'telefono_celular']));
                     $incomingObservacion = trim((string) $this->valueByAliases($row, $idx, ['observacion', 'obs']));
-                    $payload = [
-                        'nombre' => $nombre,
-                        'cc' => $cc,
-                        'correo' => $incomingCorreo ?: ($cc . '@sin-correo.local'),
-                        'direccion' => $incomingDireccion ?: 'N/D',
-                        'telefono' => $incomingTelefono ?: 'N/D',
-                        'comuna' => trim((string) ($puesto->comuna ?? 'N/D')) ?: 'N/D',
-                        'puesto' => trim(($puesto->municipio ?? '') . ' - ' . ($puesto->puesto ?? $puestoTexto), ' -'),
-                        'mesa' => 'Rem',
-                        'observacion' => $incomingObservacion ?: null,
-                        'activo' => true,
-                    ];
 
                     if ($abogado) {
                         $safeUpdate = [
@@ -1128,46 +1170,60 @@ class AbogadosController extends Controller
                         $abogado->fill($safeUpdate)->save();
                         $updatedAbogados++;
                     } else {
-                        $abogado = Abogado::create($payload);
+                        $abogado = Abogado::create([
+                            'nombre' => $nombre,
+                            'cc' => $cc,
+                            'correo' => $incomingCorreo ?: ($cc . '@sin-correo.local'),
+                            'direccion' => $incomingDireccion ?: 'N/D',
+                            'telefono' => $incomingTelefono ?: 'N/D',
+                            'comuna' => trim((string) ($puesto->comuna ?? 'N/D')) ?: 'N/D',
+                            'puesto' => trim(($puesto->municipio ?? '') . ' - ' . ($puesto->puesto ?? $puestoTexto), ' -'),
+                            'mesa' => 'Sin acreditar',
+                            'observacion' => $incomingObservacion ?: null,
+                            'activo' => true,
+                        ]);
                         $createdAbogados++;
                     }
 
                     $existing = AbogadoCoordinacion::where('abogado_id', $abogado->id)
                         ->where('eleccion_id', $eleccion->id)
+                        ->where('codpuesto', $codpuesto)
                         ->whereNull('released_at')
                         ->lockForUpdate()
                         ->first();
 
                     if ($existing) {
-                        if ((string) $existing->codpuesto === (string) $codpuesto) {
-                            $omitted++;
-                            return;
-                        }
-
-                        throw new \RuntimeException('ya tiene otra coordinación activa en esta elección');
+                        $omitted++;
+                        return;
                     }
 
-                    $totalRem = $this->getRemanentesPermitidos((int) $eleccion->id, $codpuesto);
-                    $ocupadosRem = AbogadoCoordinacion::where('eleccion_id', $eleccion->id)
-                        ->where('codpuesto', $codpuesto)
-                        ->whereNull('released_at')
-                        ->lockForUpdate()
-                        ->count();
+                    $assignment = $this->resolveCoordinatorAssignment((int) $eleccion->id, $puesto, $codpuesto);
 
-                    if ($totalRem <= 0 || $ocupadosRem >= $totalRem) {
-                        throw new \RuntimeException('no hay cupo remanente disponible');
-                    }
+                    $abogado->fill([
+                        'comuna' => trim((string) ($puesto->comuna ?? 'N/D')) ?: 'N/D',
+                        'puesto' => trim(($puesto->municipio ?? '') . ' - ' . ($puesto->puesto ?? $puestoTexto), ' -'),
+                        'mesa' => $assignment['abogado_mesa'],
+                    ])->save();
 
                     AbogadoCoordinacion::create([
                         'abogado_id' => $abogado->id,
                         'eleccion_id' => $eleccion->id,
+                        'eleccion_mesa_id' => $assignment['eleccion_mesa_id'],
                         'codpuesto' => $codpuesto,
                         'seller_id' => null,
                         'assigned_by' => auth()->id(),
                         'assigned_at' => Carbon::now('America/Bogota'),
-                        'validacion_estado' => 'asignado',
-                        'observacion' => 'Carga masiva coordinadores: ' . $puestoTexto,
+                        'validacion_estado' => $assignment['validacion_estado'],
+                        'observacion' => trim('Carga masiva coordinadores: ' . $puestoTexto . ' | ' . $assignment['note']),
                     ]);
+
+                    if ($assignment['tipo'] === 'remanente') {
+                        $creadosRem++;
+                    } elseif ($assignment['tipo'] === 'mesa') {
+                        $creadosMesa++;
+                    } else {
+                        $creadosSinAcreditar++;
+                    }
 
                     $createdCoordinaciones++;
                 });
@@ -1176,7 +1232,7 @@ class AbogadosController extends Controller
             }
         }
 
-        $message = "Importación coordinadores: asignados {$createdCoordinaciones}. Abogados nuevos {$createdAbogados}. Actualizados {$updatedAbogados}. Omitidos {$omitted}. Errores " . count($errors) . ".";
+        $message = "Importación coordinadores: creados {$createdCoordinaciones}. Rem {$creadosRem}. Mesa {$creadosMesa}. Sin acreditar {$creadosSinAcreditar}. Abogados nuevos {$createdAbogados}. Actualizados {$updatedAbogados}. Omitidos {$omitted}. Errores " . count($errors) . ".";
 
         return back()
             ->with('info', $message)
@@ -1305,6 +1361,59 @@ class AbogadosController extends Controller
         }
 
         return $totalMesas < 10 ? 1 : (int) ceil($totalMesas * 0.10);
+    }
+
+    private function countRemanentesOcupados(int $eleccionId, string $codpuesto): int
+    {
+        return AbogadoCoordinacion::where('eleccion_id', $eleccionId)
+            ->where('codpuesto', $codpuesto)
+            ->whereNull('released_at')
+            ->whereNull('eleccion_mesa_id')
+            ->where(function ($q) {
+                $q->whereNull('validacion_estado')
+                    ->orWhere('validacion_estado', '<>', 'sin_acreditar');
+            })
+            ->count();
+    }
+
+    private function resolveCoordinatorAssignment(int $eleccionId, object $puesto, string $codpuesto): array
+    {
+        $totalRem = $this->getRemanentesPermitidos($eleccionId, $codpuesto);
+        $ocupadosRem = $this->countRemanentesOcupados($eleccionId, $codpuesto);
+
+        if ($totalRem > 0 && $ocupadosRem < $totalRem) {
+            return [
+                'tipo' => 'remanente',
+                'eleccion_mesa_id' => null,
+                'mesa_num' => null,
+                'validacion_estado' => 'asignado',
+                'abogado_mesa' => 'Rem',
+                'note' => 'Autoasignado como remanente',
+            ];
+        }
+
+        if ($this->hasCoordinatorMesaColumn()) {
+            $freeMesa = $this->getFreeMesasForCoordinatorAdjustment($eleccionId, (int) $puesto->id)->first();
+            if ($freeMesa) {
+                return [
+                    'tipo' => 'mesa',
+                    'eleccion_mesa_id' => (int) $freeMesa->id,
+                    'mesa_num' => (int) $freeMesa->mesa_num,
+                    'validacion_estado' => 'asignado',
+                    'abogado_mesa' => (string) $freeMesa->mesa_num,
+                    'note' => 'Autoasignado a mesa ' . $freeMesa->mesa_num,
+                ];
+            }
+        }
+
+        return [
+            'tipo' => 'sin_acreditar',
+            'eleccion_mesa_id' => null,
+            'mesa_num' => null,
+            'validacion_estado' => 'sin_acreditar',
+            'abogado_mesa' => 'Sin acreditar',
+            'note' => 'Sin cupo remanente ni mesa libre',
+        ];
     }
 
     private function findEleccionPuestoByTexto(int $eleccionId, string $puestoTexto): ?object

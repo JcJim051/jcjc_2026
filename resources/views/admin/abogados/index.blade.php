@@ -201,7 +201,7 @@
                         </select>
                     </div>
                     <div class="col-md-3 form-group">
-                        <label>Excel / CSV</label>
+                        <div class="d-flex justify-content-between align-items-center"><label class="mb-0">Excel / CSV</label><a href="{{ route('admin.abogados.import_coordinadores.template') }}" class="btn btn-xs btn-outline-info">Descargar plantilla</a></div>
                         <input type="file" name="archivo" class="form-control-file" accept=".xlsx,.xls,.csv,.txt">
                     </div>
                     <div class="col-md-4 form-group">

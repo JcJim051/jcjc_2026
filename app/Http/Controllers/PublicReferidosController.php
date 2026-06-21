@@ -859,6 +859,10 @@ class PublicReferidosController extends Controller
         if (!$tokenRow) {
             abort(404);
         }
+        $modulo = $tokenRow->modulo ?: ($tokenRow->es_consulta ? 'consulta' : 'referidos');
+        if ($modulo === 'reporte_operativo') {
+            abort(404);
+        }
         if ($requireActive && !$tokenRow->activo) {
             abort(404);
         }

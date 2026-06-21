@@ -30,6 +30,7 @@
                             <select name="token_mode" id="token_mode" class="form-control" required>
                                 <option value="referidos">Referir + seguimiento</option>
                                 <option value="consulta">Solo consulta (avance)</option>
+                                <option value="reporte_operativo">Reporte operativo coordinadores</option>
                             </select>
                         </div>
                     </div>
@@ -147,7 +148,7 @@
                     @foreach ($tokens as $t)
                         <tr>
                             <td>{{ $t->id }}</td>
-                            <td>{{ $t->es_consulta ? 'Consulta' : 'Referidos' }}</td>
+                            <td>{{ ($t->modulo_resuelto ?? null) === 'reporte_operativo' ? 'Reporte' : ($t->es_consulta ? 'Consulta' : 'Referidos') }}</td>
                             <td>{{ $t->responsable ?: 'N/D' }}</td>
                             <td>
                                 {{ $t->municipios_label ?? ($t->departamento_nombre && $t->municipio_nombre ? ($t->departamento_nombre . ' / ' . $t->municipio_nombre) : 'N/D') }}
@@ -171,10 +172,14 @@
                             <td>
                                 <small>{{ $t->token }}</small><br>
                                 <small>
-                                    @if(!$t->es_consulta)
-                                    <a href="{{ route('public.referidos.form', $t->token) }}" target="_blank">Formulario</a> |
+                                    @if(($t->modulo_resuelto ?? null) === 'reporte_operativo')
+                                    <a href="{{ route('public.coordinador_reportes.identify', $t->token) }}" target="_blank">Reporte</a>
+                                    @else
+                                        @if(!$t->es_consulta)
+                                        <a href="{{ route('public.referidos.form', $t->token) }}" target="_blank">Formulario</a> |
+                                        @endif
+                                        <a href="{{ route('public.referidos.seguimiento', $t->token) }}" target="_blank">Seguimiento</a>
                                     @endif
-                                    <a href="{{ route('public.referidos.seguimiento', $t->token) }}" target="_blank">Seguimiento</a>
                                 </small>
                             </td>
                             <td>{{ $t->activo ? 'SI' : 'NO' }}</td>
@@ -196,7 +201,14 @@
                                         data-target="#editTokenModal">
                                         Editar
                                     </button>
-                                    @if(!$t->es_consulta)
+                                    @if(($t->modulo_resuelto ?? null) === 'reporte_operativo')
+                                        <a href="{{ route('admin.territorio_tokens.projection', ['token' => $t, 'target' => 'reporte']) }}"
+                                           target="_blank"
+                                           class="btn btn-sm btn-success"
+                                           title="Proyectar QR para reporte operativo">
+                                            <i class="fas fa-qrcode"></i> Reporte
+                                        </a>
+                                    @elseif(!$t->es_consulta)
                                         <a href="{{ route('admin.territorio_tokens.projection', ['token' => $t, 'target' => 'formulario']) }}"
                                            target="_blank"
                                            class="btn btn-sm btn-success"
@@ -204,12 +216,14 @@
                                             <i class="fas fa-qrcode"></i> Referir
                                         </a>
                                     @endif
+                                    @if(($t->modulo_resuelto ?? null) !== 'reporte_operativo')
                                     <a href="{{ route('admin.territorio_tokens.projection', ['token' => $t, 'target' => 'seguimiento']) }}"
                                        target="_blank"
                                        class="btn btn-sm btn-primary"
                                        title="Proyectar QR de seguimiento">
                                         <i class="fas fa-chart-line"></i> Avance
                                     </a>
+                                    @endif
                                     <form action="{{ route('admin.territorio_tokens.toggle', $t) }}" method="POST">
                                         @csrf
                                         <button class="btn btn-sm btn-warning" type="submit">Cambiar</button>

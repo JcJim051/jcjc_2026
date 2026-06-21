@@ -346,6 +346,13 @@ return [
             // 'can'  => 'Superuser-administrador-consultor-auditor',
             'can'  => 'Superuser-administrador-escrutador-consultor-auditor-candidato',
         ],
+        [
+            'text'        => 'Dashboard operativo E14',
+            'route'         => 'admin.mesa_reportes.dashboard',
+            'icon'        => 'fas fa-satellite-dish',
+            'label_color' => 'warning',
+            'can'  => 'Superuser-administrador-consultor-auditor',
+        ],
         [   'text'        => 'Asistencia de testigos',
             'route'         => 'admin.asistencia.index',
             'icon'        => 'fas fa-user-lock',
@@ -447,6 +454,12 @@ return [
     'icon' => 'fas fa-balance-scale',
     'can'  => 'Superuser-administrador-consultor-auditor',
     'submenu' => [
+        [
+            'text' => 'Coordinadores',
+            'route' => 'admin.coordinadores_operativos.index',
+            'icon' => 'fas fa-sitemap',
+            'can'  => 'Superuser-administrador-consultor-auditor',
+        ],
         [
             'text' => 'Caracterización',
             'route' => 'admin.abogados.index',

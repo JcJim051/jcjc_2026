@@ -61,6 +61,20 @@ Route::get('referidos/{token}/divipol/departamentos', [App\Http\Controllers\Publ
 Route::get('referidos/{token}/divipol/municipios', [App\Http\Controllers\PublicReferidosController::class, 'municipios'])
     ->name('public.referidos.municipios');
 
+Route::prefix('coordinador-reportes')->middleware('throttle:25,1')->group(function () {
+    Route::get('{token}', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'identify'])->name('public.coordinador_reportes.identify');
+    Route::post('{token}/identificar', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'lookup'])->name('public.coordinador_reportes.lookup');
+    Route::post('{token}/seleccionar-puesto', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'selectPuesto'])->name('public.coordinador_reportes.select_puesto');
+    Route::get('{token}/puesto', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'puesto'])->name('public.coordinador_reportes.puesto');
+    Route::get('{token}/mesa/{mesa}', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'mesa'])->name('public.coordinador_reportes.mesa');
+    Route::get('{token}/mesa/{mesa}/afluencia', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'mesaAfluencia'])->name('public.coordinador_reportes.mesa_afluencia');
+    Route::get('{token}/mesa/{mesa}/e14', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'mesaE14'])->name('public.coordinador_reportes.mesa_e14');
+    Route::post('{token}/mesa/{mesa}/afluencia', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'saveAfluencia'])->name('public.coordinador_reportes.afluencia');
+    Route::post('{token}/mesa/{mesa}/e14', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'saveE14'])->name('public.coordinador_reportes.e14');
+    Route::post('{token}/mesa/{mesa}/e14-foto', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'saveE14Foto'])->name('public.coordinador_reportes.e14_foto');
+    Route::post('{token}/mesa/{mesa}/control', [App\Http\Controllers\PublicCoordinadorReporteController::class, 'saveControl'])->name('public.coordinador_reportes.control');
+});
+
 Route::get('/asistencia/reunion/{token}/panel', [AsistenciaReunionController::class, 'panelReunion'])
     ->name('asistencia.reunion.panel');
 Route::get('/asistencia/reunion/{token}', [AsistenciaReunionController::class, 'mostrarFormularioSesion'])

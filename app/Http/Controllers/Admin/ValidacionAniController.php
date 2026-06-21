@@ -62,7 +62,7 @@ class ValidacionAniController extends Controller
                 'a.correo as email',
                 DB::raw('COALESCE(ep.municipio, pu.mun, "") as municipio'),
                 DB::raw('COALESCE(ep.puesto, pu.nombre, ac.codpuesto) as puesto'),
-                DB::raw("COALESCE(CAST(em.mesa_num as CHAR), 'Rem') as mesa_num"),
+                DB::raw("CASE WHEN em.mesa_num IS NOT NULL THEN CAST(em.mesa_num as CHAR) WHEN ac.validacion_estado = 'sin_acreditar' THEN 'Sin acreditar' ELSE 'Rem' END as mesa_num"),
                 DB::raw("'coordinador' as tipo_fila"),
                 'a.id as abogado_id',
             ])

@@ -70,14 +70,18 @@ class TerritorioTokensController extends Controller
             $row = 2;
             foreach ($tokens as $t) {
                 $links = [];
-                if (!$t->es_consulta) {
-                    $links[] = 'Formulario: ' . route('public.referidos.form', $t->token);
+                if (($t->modulo_resuelto ?? null) === 'reporte_operativo') {
+                    $links[] = 'Reporte: ' . route('public.coordinador_reportes.identify', $t->token);
+                } else {
+                    if (!$t->es_consulta) {
+                        $links[] = 'Formulario: ' . route('public.referidos.form', $t->token);
+                    }
+                    $links[] = 'Seguimiento: ' . route('public.referidos.seguimiento', $t->token);
                 }
-                $links[] = 'Seguimiento: ' . route('public.referidos.seguimiento', $t->token);
 
                 $sheet->fromArray([
                     $t->id,
-                    $t->es_consulta ? 'Consulta' : 'Referidos',
+                    ($t->modulo_resuelto === 'reporte_operativo' ? 'Reporte Operativo' : ($t->es_consulta ? 'Consulta' : 'Referidos')), 
                     $t->responsable ?: 'N/D',
                     $t->eleccion_id,
                     $t->eleccion_nombre ?? '',
@@ -321,7 +325,7 @@ class TerritorioTokensController extends Controller
     {
         $data = $request->validate([
             'eleccion_id' => 'required|integer|exists:elecciones,id',
-            'token_mode' => 'nullable|in:referidos,consulta',
+            'token_mode' => 'nullable|in:referidos,consulta,reporte_operativo',
             'municipio_codigo' => 'nullable|string',
             'municipios_multi' => 'nullable|array',
             'municipios_multi.*' => 'string',
@@ -361,6 +365,7 @@ class TerritorioTokensController extends Controller
                 : $this->normalizeComunasInput($data['comuna'] ?? null),
             'es_consulta' => $mode === 'consulta',
             'municipios' => $municipiosSeleccionados->all(),
+            'modulo' => $mode,
             'token' => $token,
             'responsable' => $data['responsable'] ?? null,
             'activo' => true,
@@ -391,13 +396,19 @@ class TerritorioTokensController extends Controller
 
     public function projection(Request $request, TerritorioToken $token)
     {
-        $target = $request->get('target') === 'seguimiento' || $token->es_consulta
-            ? 'seguimiento'
-            : 'formulario';
+        $modulo = $token->modulo ?: ($token->es_consulta ? 'consulta' : 'referidos');
+        if ($modulo === 'reporte_operativo') {
+            $target = 'reporte';
+            $publicUrl = route('public.coordinador_reportes.identify', $token->token);
+        } else {
+            $target = $request->get('target') === 'seguimiento' || $token->es_consulta
+                ? 'seguimiento'
+                : 'formulario';
 
-        $publicUrl = $target === 'seguimiento'
-            ? route('public.referidos.seguimiento', $token->token)
-            : route('public.referidos.form', $token->token);
+            $publicUrl = $target === 'seguimiento'
+                ? route('public.referidos.seguimiento', $token->token)
+                : route('public.referidos.form', $token->token);
+        }
 
         $svg = (new Writer(
             new ImageRenderer(new RendererStyle(760, 3), new SvgImageBackEnd())
@@ -477,6 +488,9 @@ class TerritorioTokensController extends Controller
         }
 
         $token->responsable = trim((string) ($data['responsable'] ?? '')) ?: null;
+        if (!$token->modulo) {
+            $token->modulo = $token->es_consulta ? 'consulta' : 'referidos';
+        }
         $token->expires_at = $data['expires_at'] ?? null;
         $token->activo = (bool) ($data['activo'] ?? $token->activo);
         $token->save();
